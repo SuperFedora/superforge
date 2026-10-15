@@ -81,7 +81,7 @@ fn main() {
         "all" => {
             let _ = write_hw_profile(&st);
             let force = args.iter().any(|a| a == "--force" || a == "-f");
-            for tgt in ["superfedora", "supertheme", "superforge", "supershell", "superagent", "wlctl", "bluetui", "wiremix", "fuzzel", "btop"] {
+            for tgt in ["superfedora", "supertheme", "superforge", "supershell", "supernotify", "superagent", "wlctl", "bluetui", "wiremix", "fuzzel", "btop"] {
                 let mut call_args = vec![tgt.to_string()];
                 if force {
                     call_args.push("--force".into());

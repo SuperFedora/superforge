@@ -13,6 +13,7 @@ pub const FORGE_CATALOG: &[(&str, &str, &str, &str)] = &[
     ("supertheme", "supertheme", "rust", "16-Bit Theme, Wallpaper, Palette & SFX Engine"),
     ("superforge", "superforge", "rust", "Hardware-Tuned Source Builder & WebApp Engine"),
     ("supershell", "superdock", "rust", "16-Bit Desktop Shell Suite (superdock..superlock)"),
+    ("supernotify", "supernotify", "rust", "16-Bit Animated Cast Comms & Stage Banner Engine"),
     ("superagent", "superagent", "rust", "Autonomous Workstation Agent & Cast Comms Daemon"),
     ("ripgrep", "rg", "rust", "SIMD-accelerated regex search tool"),
     ("fastfetch", "fastfetch", "cmake", "Native C system info fetcher"),

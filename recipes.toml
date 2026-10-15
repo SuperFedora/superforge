@@ -30,7 +30,15 @@ binary = "superdock"
 build_system = "cargo"
 repo = "https://github.com/SuperFedora/supershell.git"
 deps = ["gcc", "make"]
-description = "16-Bit Desktop Shell Suite (superdock, superbar, supersettings, supernotify, superlock)"
+description = "16-Bit Desktop Shell Suite (superdock, superbar, supersettings, superlock)"
+
+[[recipe]]
+name = "supernotify"
+binary = "supernotify"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/supernotify.git"
+deps = ["gcc", "make"]
+description = "16-Bit Animated Cast Comms (10 Specialists), Stage Banners & Notification Engine"
 
 [[recipe]]
 name = "superagent"
