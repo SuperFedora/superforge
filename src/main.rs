@@ -15,11 +15,12 @@ use std::io::{self, IsTerminal};
 use std::process;
 
 fn print_help() {
-    println!("SuperForge v0.4.0 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
+    println!("SuperForge v0.5.0 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
     println!("Usage:");
     println!("  superforge                                  Launch TUI (or print status if non-TTY)");
     println!("  superforge tui                              Launch interactive 16-Bit Forge TUI");
-    println!("  superforge status                           Show CPU/linker flags, presets & WebApps");
+    println!("  superforge status                           Show CPU/linker flags, stamps, presets & WebApps");
+    println!("  superforge check-updates [--dry-run]        Compare local .stamp git SHAs vs remote HEAD");
     println!("  superforge fetch-bin <target> [--dry-run]   Tier-1 quick static musl binary fetch");
     println!("  superforge build --quick <target>           Fetch Tier-1 binary or fallback to source");
     println!("  superforge background-reforge [--dry-run]   Tier-2 AC-power -march=native background build");
@@ -49,7 +50,7 @@ fn main() {
                 return;
             }
             "-V" | "--version" | "version" => {
-                println!("superforge 0.4.0 (SuperFedora/superforge — Rust 1.99 Native Engine)");
+                println!("superforge 0.5.0 (SuperFedora/superforge — Rust 1.99 Native Engine)");
                 return;
             }
             "tui" => {
@@ -78,6 +79,11 @@ fn main() {
     match cmd {
         "status" | "--status" | "check" | "--check" | "list" | "presets" | "env" | "flags" => {
             print_status_and_charts(&st);
+        }
+        "check-updates" | "check-update" | "outdated" => {
+            let mut call_args = vec!["check-updates".to_string()];
+            call_args.extend_from_slice(&args[1..]);
+            process::exit(exec_runner(&mut st, &call_args));
         }
         "fetch-bin" | "fetch" | "quick" => {
             process::exit(run_fetch_bin(&mut st, &args[1..]));

@@ -27,18 +27,24 @@ pub fn print_status_and_charts(st: &ForgeState) {
     println!("  SIMD / ISA   : {}", hw.isa_flags);
     println!("  Fast Linker  : {}", hw.linker);
     println!("  GPU Device   : {}", hw.gpu_info);
+    println!("  Stamp Store  : ~/.local/share/superfedora/forge/stamps/<name>.stamp");
+    println!("  Manifest     : ~/.config/superfedora/forge.json");
     println!("  CFLAGS       : {}", hw.host_cflags);
     println!("  RUSTFLAGS    : {}\n", hw.host_rustflags);
 
-    println!("  PRESET       BINARY            STATUS");
-    println!("  ------       ------            ------");
+    println!("  PRESET         BINARY            STATUS");
+    println!("  ------         ------            ------");
     for it in &st.items {
         let status = if it.installed {
-            format!("forged ({})", hw.march_target)
+            if it.sha.is_empty() {
+                format!("forged ({})", hw.march_target)
+            } else {
+                format!("forged ({}, sha:{})", hw.march_target, it.sha)
+            }
         } else {
             "not-forged".into()
         };
-        println!("  {:<12} {:<17} [{}]", it.name, it.bin_name, status);
+        println!("  {:<14} {:<17} [{}]", it.name, it.bin_name, status);
     }
 
     println!("\n{p}{b}━━ SUPERFORGE NATIVE (-march=native) BINARIES & SIZE CHART{r}");
@@ -54,7 +60,7 @@ pub fn print_status_and_charts(st: &ForgeState) {
             "░".repeat(18usize.saturating_sub(filled))
         );
         let sz_str = if item.size_kb > 0 { format!("{:>6} KB", item.size_kb) } else { "     --  ".into() };
-        println!("  {} {s}{b}{:<13}{r} {:<6} {} {}  \x1b[2m{}\x1b[0m", status, item.name, item.kind, bar, sz_str, item.desc);
+        println!("  {} {s}{b}{:<14}{r} {:<6} {} {}  \x1b[2m{}\x1b[0m", status, item.name, item.kind, bar, sz_str, item.desc);
     }
 
     if !st.webapps.is_empty() {
@@ -68,8 +74,10 @@ pub fn print_status_and_charts(st: &ForgeState) {
 }
 
 pub fn write_hw_profile(st: &ForgeState) -> PathBuf {
+    let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
     let _ = fs::create_dir_all(&st.state_dir);
     let _ = fs::create_dir_all(st.state_dir.join("source-built"));
+    let _ = fs::create_dir_all(PathBuf::from(&home).join(".local/share/superfedora/forge/stamps"));
     let hw = &st.hw;
     let hw_env = st.state_dir.join("hardware-flags.env");
     let content = format!(
@@ -80,7 +88,6 @@ pub fn write_hw_profile(st: &ForgeState) -> PathBuf {
     );
     let _ = fs::write(&hw_env, content);
     let _ = fs::write(st.state_dir.join("build-mode"), "source\n");
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
     let rpmmacros = PathBuf::from(home).join(".rpmmacros");
     let existing = fs::read_to_string(&rpmmacros).unwrap_or_default();
     if !existing.contains("SuperFedora localhost") {

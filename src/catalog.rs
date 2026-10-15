@@ -28,6 +28,24 @@ pub const FORGE_CATALOG: &[(&str, &str, &str, &str)] = &[
     ("openrgb", "openrgb", "qmake", "Open source RGB lighting control"),
     ("hyprland", "Hyprland", "cmake", "Dynamic tiling Wayland compositor"),
     ("quickshell", "quickshell", "cmake", "Qt6 Wayland shell toolkit"),
+    ("yazi", "yazi", "rust", "Blazing fast terminal file manager with preview"),
+    ("dua-cli", "dua", "rust", "Interactive disk usage analyzer & cleaner"),
+    ("ouch", "ouch", "rust", "Painless archive compression & extraction tool"),
+    ("oculante", "oculante", "rust", "Fast GPU-accelerated image viewer & quick editor"),
+    ("imv", "imv", "meson", "Wayland native image viewer for tiling WMs"),
+    ("satty", "satty", "rust", "Modern Wayland screenshot annotation tool"),
+    ("hyprpicker", "hyprpicker", "cmake", "wlroots/Hyprland Wayland color picker"),
+    ("wl-screenrec", "wl-screenrec", "rust", "High-performance VA-API hardware screen recorder"),
+    ("zathura", "zathura", "meson", "Keyboard-driven PDF & EPUB document viewer"),
+    ("typst", "typst", "rust", "Modern markup-based typesetting & PDF compiler"),
+    ("csvlens", "csvlens", "rust", "Interactive terminal CSV file viewer"),
+    ("helix", "hx", "rust", "Post-modern modal terminal text editor"),
+    ("fend", "fend", "rust", "Arbitrary-precision unit-aware calculator"),
+    ("termusic", "termusic", "rust", "Terminal music & podcast player TUI"),
+    ("cava", "cava", "cmake", "Cross-platform PipeWire audio spectrum visualizer"),
+    ("mpv", "mpv", "meson", "Wayland VA-API hardware-accelerated media player"),
+    ("cliphist", "cliphist", "go", "Wayland clipboard history manager for fuzzel"),
+    ("bazarr", "bazarr", "python", "Companion subtitle manager daemon & WebApp"),
 ];
 
 #[derive(Clone, Default, Deserialize)]
@@ -50,6 +68,7 @@ pub struct ForgeItem {
     pub desc: String,
     pub installed: bool,
     pub size_kb: u64,
+    pub sha: String,
 }
 
 #[derive(Clone)]
@@ -79,24 +98,17 @@ impl HardwareProfile {
         if let Ok(out) = Command::new("rustc").args(["--print", "target-cpus"]).output() {
             let txt = String::from_utf8_lossy(&out.stdout);
             for line in txt.lines() {
-                if let Some(pos) = line.find("currently ") {
-                    let rest = &line[pos + 10..];
-                    if let Some(end) = rest.find(')') {
-                        march_target = rest[..end].trim().to_string();
-                        break;
-                    }
+                if let Some(pos) = line.find("currently ") && let Some(end) = line[pos + 10..].find(')') {
+                    march_target = line[pos + 10..pos + 10 + end].trim().to_string();
+                    break;
                 }
             }
         }
-        if march_target.is_empty() {
-            march_target = "native".into();
-        }
+        if march_target.is_empty() { march_target = "native".into(); }
         let mut flags = Vec::new();
         if let Some(fl) = cpuinfo.lines().find(|l| l.starts_with("flags")) {
             for kw in ["avx512f", "avx2", "avx", "fma", "bmi2", "aes", "vaes", "sha_ni", "sse4_2"] {
-                if fl.split_whitespace().any(|w| w == kw) {
-                    flags.push(kw);
-                }
+                if fl.split_whitespace().any(|w| w == kw) { flags.push(kw); }
             }
         }
         let isa_flags = if flags.is_empty() { "standard".into() } else { flags.join(" ") };
@@ -107,16 +119,11 @@ impl HardwareProfile {
         } else {
             ("bfd", "", "")
         };
-        let gpu_info = Command::new("lspci")
-            .output()
-            .ok()
-            .and_then(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .find(|l| l.contains("VGA") || l.contains("3D") || l.contains("Display"))
-                    .and_then(|l| l.split_once(": ").map(|(_, v)| v.trim().to_string()))
-            })
-            .unwrap_or_else(|| "Wayland/DRM".into());
+        let gpu_info = Command::new("lspci").output().ok().and_then(|o| {
+            String::from_utf8_lossy(&o.stdout).lines()
+                .find(|l| l.contains("VGA") || l.contains("3D") || l.contains("Display"))
+                .and_then(|l| l.split_once(": ").map(|(_, v)| v.trim().to_string()))
+        }).unwrap_or_else(|| "Wayland/DRM".into());
         let host_cflags = "-O3 -pipe -march=native -mtune=native -flto=auto -ffat-lto-objects -fno-plt".to_string();
         let host_ldflags = format!("-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now -flto=auto {ld_flag}").trim().to_string();
         let host_rustflags = format!("-C opt-level=3 -C target-cpu=native -C codegen-units=1 -C strip=symbols {rust_ld}").trim().to_string();
@@ -143,21 +150,9 @@ pub struct ForgeState {
 impl ForgeState {
     pub fn load() -> Self {
         let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
-        let state_dir = env::var("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(&home).join(".config"))
-            .join("superfedora");
+        let state_dir = env::var("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(&home).join(".config")).join("superfedora");
         let forge_root = Self::resolve_root(&home);
-        let mut st = Self {
-            forge_root,
-            state_dir,
-            hw: HardwareProfile::detect(),
-            pri_rgb: (122, 162, 247),
-            sec_rgb: (187, 154, 247),
-            items: Vec::new(),
-            webapps: Vec::new(),
-            live: ForgeLive::default(),
-        };
+        let mut st = Self { forge_root, state_dir, hw: HardwareProfile::detect(), pri_rgb: (122, 162, 247), sec_rgb: (187, 154, 247), items: Vec::new(), webapps: Vec::new(), live: ForgeLive::default() };
         st.refresh();
         st
     }
@@ -167,14 +162,8 @@ impl ForgeState {
             let p = PathBuf::from(r);
             if p.join("lib/forge-runner.sh").exists() { return p; }
         }
-        for cand in [
-            PathBuf::from(home).join("Projects/superfedora/superforge"),
-            PathBuf::from(home).join(".local/share/superforge"),
-            PathBuf::from("/usr/share/superfedora"),
-        ] {
-            if cand.join("lib/forge-runner.sh").exists() {
-                return cand;
-            }
+        for cand in [PathBuf::from(home).join("Projects/superfedora/superforge"), PathBuf::from(home).join(".local/share/superforge"), PathBuf::from("/usr/share/superfedora")] {
+            if cand.join("lib/forge-runner.sh").exists() { return cand; }
         }
         PathBuf::from(home).join(".local/share/superforge")
     }
@@ -183,26 +172,25 @@ impl ForgeState {
     pub fn secondary_color(&self) -> Color { Color::Rgb(self.sec_rgb.0, self.sec_rgb.1, self.sec_rgb.2) }
 
     pub fn refresh_fast(&mut self) {
-        self.live = fs::read_to_string(self.state_dir.join("forge-live.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        self.live = fs::read_to_string(self.state_dir.join("forge-live.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     }
 
     pub fn refresh(&mut self) {
         let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
         let bin_dir = Path::new(&home).join(".local/bin");
         let sys_bin = Path::new("/usr/local/bin");
-        let stamp_dir = self.state_dir.join("source-built");
-        self.items = FORGE_CATALOG
-            .iter()
-            .map(|&(name, bin_name, sys, desc)| {
-                let bin_path = if bin_dir.join(bin_name).exists() { bin_dir.join(bin_name) } else { sys_bin.join(bin_name) };
-                let installed = stamp_dir.join(format!("{name}.stamp")).exists() || bin_path.exists();
-                let size_kb = fs::metadata(&bin_path).map(|m| m.len() / 1024).unwrap_or(0);
-                ForgeItem { name: name.into(), bin_name: bin_name.into(), kind: sys.into(), desc: desc.into(), installed, size_kb }
-            })
-            .collect();
+        let share_stamps = Path::new(&home).join(".local/share/superfedora/forge/stamps");
+        let legacy_stamps = self.state_dir.join("source-built");
+        self.items = FORGE_CATALOG.iter().map(|&(name, bin_name, sys, desc)| {
+            let bin_path = if bin_dir.join(bin_name).exists() { bin_dir.join(bin_name) } else { sys_bin.join(bin_name) };
+            let s_file = if share_stamps.join(format!("{name}.stamp")).exists() { share_stamps.join(format!("{name}.stamp")) } else { legacy_stamps.join(format!("{name}.stamp")) };
+            let sha = fs::read_to_string(&s_file).ok().and_then(|t| {
+                t.lines().find_map(|l| l.strip_prefix("sha=").or_else(|| l.strip_prefix("commit=")).map(|v| v.trim().chars().take(7).collect::<String>())).filter(|v| !v.is_empty())
+            }).unwrap_or_default();
+            let installed = s_file.exists() || bin_path.exists();
+            let size_kb = fs::metadata(&bin_path).map(|m| m.len() / 1024).unwrap_or(0);
+            ForgeItem { name: name.into(), bin_name: bin_name.into(), kind: sys.into(), desc: desc.into(), installed, size_kb, sha }
+        }).collect();
         self.webapps.clear();
         if let Ok(txt) = fs::read_to_string(self.state_dir.join("forge.json"))
             && let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt)
