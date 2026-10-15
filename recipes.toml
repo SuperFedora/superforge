@@ -3,10 +3,11 @@
 [[recipe]]
 name = "superfedora"
 binary = "superfedora"
+symlink_alias = "sf"
 build_system = "cargo"
 repo = "https://github.com/SuperFedora/superfedora.git"
 deps = ["gcc", "make"]
-description = "16-Bit Rust Workstation Engine & Orchestrator TUI"
+description = "16-Bit Rust Workstation Engine & Orchestrator TUI (alias: sf)"
 
 [[recipe]]
 name = "supertheme"

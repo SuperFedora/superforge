@@ -167,8 +167,16 @@ impl ForgeState {
             let p = PathBuf::from(r);
             if p.join("lib/forge-runner.sh").exists() { return p; }
         }
-        let proj = PathBuf::from(home).join("Projects/superfedora/superforge");
-        if proj.join("lib/forge-runner.sh").exists() { proj } else { PathBuf::from(home).join(".local/share/superforge") }
+        for cand in [
+            PathBuf::from(home).join("Projects/superfedora/superforge"),
+            PathBuf::from(home).join(".local/share/superforge"),
+            PathBuf::from("/usr/share/superfedora"),
+        ] {
+            if cand.join("lib/forge-runner.sh").exists() {
+                return cand;
+            }
+        }
+        PathBuf::from(home).join(".local/share/superforge")
     }
 
     pub fn primary_color(&self) -> Color { Color::Rgb(self.pri_rgb.0, self.pri_rgb.1, self.pri_rgb.2) }
@@ -184,11 +192,12 @@ impl ForgeState {
     pub fn refresh(&mut self) {
         let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
         let bin_dir = Path::new(&home).join(".local/bin");
+        let sys_bin = Path::new("/usr/local/bin");
         let stamp_dir = self.state_dir.join("source-built");
         self.items = FORGE_CATALOG
             .iter()
             .map(|&(name, bin_name, sys, desc)| {
-                let bin_path = bin_dir.join(bin_name);
+                let bin_path = if bin_dir.join(bin_name).exists() { bin_dir.join(bin_name) } else { sys_bin.join(bin_name) };
                 let installed = stamp_dir.join(format!("{name}.stamp")).exists() || bin_path.exists();
                 let size_kb = fs::metadata(&bin_path).map(|m| m.len() / 1024).unwrap_or(0);
                 ForgeItem { name: name.into(), bin_name: bin_name.into(), kind: sys.into(), desc: desc.into(), installed, size_kb }

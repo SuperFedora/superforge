@@ -99,7 +99,7 @@ record_forge() {
 install_bin() {
     local src="$1" dst_name="${2:-$(basename "$1")}"; mkdir -p "$BIN_DIR"
     install -m 755 "$src" "$BIN_DIR/.${dst_name}.tmp.$$" && mv -f "$BIN_DIR/.${dst_name}.tmp.$$" "$BIN_DIR/$dst_name"
-    [[ "$dst_name" == "superfedora" && -d "$SF_ROOT/bin" ]] && { install -m 755 "$src" "$SF_ROOT/bin/.sf.tmp.$$" && mv -f "$SF_ROOT/bin/.sf.tmp.$$" "$SF_ROOT/bin/superfedora"; ln -sf "$BIN_DIR/superfedora" "$BIN_DIR/sf"; }
+    [[ "$dst_name" == "superfedora" ]] && { [[ -d "$SF_ROOT/bin" ]] && { install -m 755 "$src" "$SF_ROOT/bin/.sf.tmp.$$" && mv -f "$SF_ROOT/bin/.sf.tmp.$$" "$SF_ROOT/bin/superfedora"; }; ln -sf superfedora "$BIN_DIR/sf"; [[ -w /usr/local/bin && "${SUPERFEDORA_SYSTEM_WIDE:-0}" == "1" ]] && { install -m 755 "$src" /usr/local/bin/superfedora; ln -sf superfedora /usr/local/bin/sf; } || true; }
     echo "[OK] Installed $BIN_DIR/$dst_name (-march=$MARCH_TARGET, linker=$LINKER)" | tee -a "$FORGE_LOG"
 }
 
@@ -128,8 +128,8 @@ forge_generic_dir() {
     [[ -x "$BIN_DIR/g++" ]] && cxx_bin="$BIN_DIR/g++" || { [[ -x /usr/bin/g++ ]] && cxx_bin="/usr/bin/g++"; }
     set_live 1 running "$name" 65 "[3/4] Compiling $name (-O3 -march=$MARCH_TARGET, $CPU_JOBS threads)..."
     if [[ -f "$dir/Cargo.toml" ]]; then
-        local rtarget="${CPU_ARCH}-unknown-linux-gnu"
-        # shellcheck disable=SC2086
+        command -v cargo >/dev/null 2>&1 || curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path
+        local rtarget="${CPU_ARCH}-unknown-linux-gnu"; # shellcheck disable=SC2086
         (cd "$dir" && CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" RUSTFLAGS="$HOST_RUSTFLAGS" CARGO_BUILD_JOBS="$CPU_JOBS" cargo build --release --target "$rtarget" $extra_cargo 2>&1 | tee -a "$FORGE_LOG")
         found="$dir/target/$rtarget/release/$bin_hint"; [[ -x "$found" ]] || found="$dir/target/release/$bin_hint"
         [[ -x "$found" ]] || found="$(find "$dir/target/$rtarget/release" "$dir/target/release" -maxdepth 1 -type f -executable ! -name '*.so' ! -name '*.d' 2>/dev/null | head -1)"
