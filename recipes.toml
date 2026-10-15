@@ -1,0 +1,145 @@
+# SuperFedora SuperForge Declarative Native Recipe Catalog (-O3 -march=native / LTO)
+
+[[recipe]]
+name = "superfedora"
+binary = "superfedora"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/superfedora.git"
+deps = ["gcc", "make"]
+description = "16-Bit Rust Workstation Engine & Orchestrator TUI"
+
+[[recipe]]
+name = "supertheme"
+binary = "supertheme"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/supertheme.git"
+deps = ["gcc", "make"]
+description = "16-Bit Theme, Wallpaper, Palette & WAV SFX Engine"
+
+[[recipe]]
+name = "superforge"
+binary = "superforge"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/superforge.git"
+deps = ["gcc", "make"]
+description = "Hardware-Tuned Source Builder & Chromeless Firefox WebApp Engine"
+
+[[recipe]]
+name = "supershell"
+binary = "superdock"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/supershell.git"
+deps = ["gcc", "make"]
+description = "16-Bit Desktop Shell Suite (superdock, superbar, supersettings, supernotify, superlock)"
+
+[[recipe]]
+name = "superagent"
+binary = "superagent"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/superagent.git"
+deps = ["gcc", "make"]
+description = "Autonomous Workstation Agent (OpenClaw, Ollama & Cast Comms Daemon)"
+
+[[recipe]]
+name = "ripgrep"
+binary = "rg"
+build_system = "cargo"
+repo = "https://github.com/BurntSushi/ripgrep.git"
+deps = ["gcc", "make"]
+description = "SIMD-accelerated regex search tool"
+
+[[recipe]]
+name = "fastfetch"
+binary = "fastfetch"
+build_system = "cmake"
+repo = "https://github.com/fastfetch-cli/fastfetch.git"
+deps = ["gcc", "gcc-c++", "cmake", "ninja-build", "pkgconf-pkg-config", "pciutils-devel", "wayland-devel", "libdrm-devel", "glib2-devel"]
+description = "Native C system info fetcher"
+
+[[recipe]]
+name = "idlescreen"
+binary = "idlescreen"
+build_system = "cargo"
+repo = "https://github.com/idlescreen/idlescreen.git"
+deps = ["gcc", "make", "pkgconf-pkg-config", "wayland-devel", "libxkbcommon-devel", "dbus-devel"]
+description = "16-Bit Wayland idle screensaver daemon"
+
+[[recipe]]
+name = "fd"
+binary = "fd"
+build_system = "cargo"
+repo = "https://github.com/sharkdp/fd.git"
+deps = ["gcc", "make"]
+description = "Fast parallel filesystem finder"
+
+[[recipe]]
+name = "zoxide"
+binary = "zoxide"
+build_system = "cargo"
+repo = "https://github.com/ajeetdsouza/zoxide.git"
+deps = ["gcc", "make"]
+description = "Smarter cd directory jumper"
+
+[[recipe]]
+name = "btop"
+binary = "btop"
+build_system = "make"
+repo = "https://github.com/aristocratos/btop.git"
+deps = ["gcc-c++", "make"]
+description = "C++20 hardware & GPU monitor"
+
+[[recipe]]
+name = "wlctl"
+binary = "wlctl"
+build_system = "cargo"
+repo = "https://github.com/aashish-thapa/wlctl.git"
+deps = ["gcc", "make", "pkgconf-pkg-config", "dbus-devel"]
+description = "16-Bit TUI Wi-Fi / NetworkManager controller"
+
+[[recipe]]
+name = "bluetui"
+binary = "bluetui"
+build_system = "cargo"
+repo = "https://github.com/pythops/bluetui.git"
+deps = ["gcc", "make", "pkgconf-pkg-config", "dbus-devel"]
+description = "16-Bit TUI Bluetooth manager"
+
+[[recipe]]
+name = "wiremix"
+binary = "wiremix"
+build_system = "cargo"
+repo = "https://github.com/tsowell/wiremix.git"
+deps = ["gcc", "clang", "make", "pkgconf-pkg-config", "pipewire-devel", "alsa-lib-devel"]
+description = "16-Bit PipeWire TUI audio mixer"
+
+[[recipe]]
+name = "fuzzel"
+binary = "fuzzel"
+build_system = "meson"
+repo = "https://codeberg.org/dnkl/fuzzel.git"
+deps = ["gcc", "meson", "ninja-build", "pkgconf-pkg-config", "wayland-devel", "wayland-protocols-devel", "libxkbcommon-devel", "pixman-devel", "cairo-devel", "pango-devel", "fcft-devel", "tllist-devel", "fontconfig-devel", "libpng-devel", "librsvg2-devel", "scdoc"]
+description = "Wayland native app launcher"
+
+[[recipe]]
+name = "openrgb"
+binary = "openrgb"
+build_system = "qmake"
+repo = "https://gitlab.com/CalcProgrammer1/OpenRGB.git"
+deps = ["gcc-c++", "make", "pkgconf-pkg-config", "qt6-qtbase-devel", "qt6-linguist", "hidapi-devel", "libusb1-devel", "mbedtls-devel"]
+description = "Open source RGB lighting control"
+
+[[recipe]]
+name = "hyprland"
+binary = "Hyprland"
+build_system = "cmake"
+repo = "https://github.com/hyprwm/Hyprland.git"
+deps = ["gcc-c++", "cmake", "meson", "ninja-build", "pkgconf-pkg-config", "wayland-devel", "wayland-protocols-devel"]
+description = "Dynamic tiling Wayland compositor"
+
+[[recipe]]
+name = "quickshell"
+binary = "quickshell"
+build_system = "cmake"
+repo = "https://github.com/quickshell-mirror/quickshell.git"
+deps = ["gcc-c++", "cmake", "ninja-build", "pkgconf-pkg-config", "spirv-tools", "qt6-qtbase-devel", "qt6-qtdeclarative-devel", "qt6-qtwayland-devel"]
+description = "Qt6 Wayland shell toolkit"

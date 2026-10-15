@@ -1,0 +1,19 @@
+# SuperForge Declarative Native Build Catalog (name|binary|build_system|repo)
+superfedora|superfedora|cargo|https://github.com/SuperFedora/superfedora.git
+supertheme|supertheme|cargo|https://github.com/SuperFedora/supertheme.git
+superforge|superforge|cargo|https://github.com/SuperFedora/superforge.git
+supershell|superdock|cargo|https://github.com/SuperFedora/supershell.git
+superagent|superagent|cargo|https://github.com/SuperFedora/superagent.git
+ripgrep|rg|cargo|https://github.com/BurntSushi/ripgrep.git
+fastfetch|fastfetch|cmake|https://github.com/fastfetch-cli/fastfetch.git
+idlescreen|idlescreen|cargo|https://github.com/idlescreen/idlescreen.git
+fd|fd|cargo|https://github.com/sharkdp/fd.git
+zoxide|zoxide|cargo|https://github.com/ajeetdsouza/zoxide.git
+btop|btop|make|https://github.com/aristocratos/btop.git
+wlctl|wlctl|cargo|https://github.com/aashish-thapa/wlctl.git
+bluetui|bluetui|cargo|https://github.com/pythops/bluetui.git
+wiremix|wiremix|cargo|https://github.com/tsowell/wiremix.git
+fuzzel|fuzzel|meson|https://codeberg.org/dnkl/fuzzel.git
+openrgb|openrgb|qmake|https://gitlab.com/CalcProgrammer1/OpenRGB.git
+hyprland|Hyprland|cmake|https://github.com/hyprwm/Hyprland.git
+quickshell|quickshell|cmake|https://github.com/quickshell-mirror/quickshell.git

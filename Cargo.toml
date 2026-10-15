@@ -1,0 +1,24 @@
+[package]
+name = "superforge"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "SuperFedora 16-Bit Hardware-Tuned Source Builder (-march=native / LTO) & Chromeless Firefox WebApp Engine"
+license = "Apache-2.0"
+
+[[bin]]
+name = "superforge"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.29.0"
+ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
