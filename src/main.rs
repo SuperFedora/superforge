@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod builder;
+mod cache_tier;
 mod catalog;
 mod tui;
 
 use crate::builder::{exec_runner, print_status_and_charts, run_update_graphical, write_hw_profile};
+use crate::cache_tier::{run_background_reforge, run_fetch_bin};
 use crate::catalog::ForgeState;
 use crate::tui::run_tui;
 use std::env;
@@ -13,11 +15,14 @@ use std::io::{self, IsTerminal};
 use std::process;
 
 fn print_help() {
-    println!("SuperForge v0.3.0 — Native Rust Hardware-Tuned Source Builder & WebApp Engine");
+    println!("SuperForge v0.4.0 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
     println!("Usage:");
     println!("  superforge                                  Launch TUI (or print status if non-TTY)");
     println!("  superforge tui                              Launch interactive 16-Bit Forge TUI");
     println!("  superforge status                           Show CPU/linker flags, presets & WebApps");
+    println!("  superforge fetch-bin <target> [--dry-run]   Tier-1 quick static musl binary fetch");
+    println!("  superforge build --quick <target>           Fetch Tier-1 binary or fallback to source");
+    println!("  superforge background-reforge [--dry-run]   Tier-2 AC-power -march=native background build");
     println!("  superforge <preset|owner/repo>              Clone, tune (-march=native), build & install");
     println!("  superforge [webapp] <url> [name] [--isolated|--shared] Install chromeless Firefox WebApp");
     println!("  superforge remove <name|slug>               Uninstall a forged WebApp or binary");
@@ -44,7 +49,7 @@ fn main() {
                 return;
             }
             "-V" | "--version" | "version" => {
-                println!("superforge 0.3.0 (SuperFedora/superforge — Rust 1.99 Native Engine)");
+                println!("superforge 0.4.0 (SuperFedora/superforge — Rust 1.99 Native Engine)");
                 return;
             }
             "tui" => {
@@ -64,10 +69,21 @@ fn main() {
         }
     }
 
+    if args.iter().any(|a| a == "--quick") && args[0] != "fetch-bin" {
+        let filtered: Vec<String> = args.into_iter().filter(|a| a != "--quick").collect();
+        process::exit(run_fetch_bin(&mut st, &filtered));
+    }
+
     let cmd = args[0].as_str();
     match cmd {
         "status" | "--status" | "check" | "--check" | "list" | "presets" | "env" | "flags" => {
             print_status_and_charts(&st);
+        }
+        "fetch-bin" | "fetch" | "quick" => {
+            process::exit(run_fetch_bin(&mut st, &args[1..]));
+        }
+        "background-reforge" | "reforge" | "bg-reforge" => {
+            process::exit(run_background_reforge(&mut st, &args[1..]));
         }
         "profile" | "init" => {
             let p = write_hw_profile(&st);
