@@ -22,7 +22,7 @@ WEBAPP_DIR="$HOME/.local/share/superfedora/webapps"; SYSROOT="$HOME/.local/sysro
 TMP_BUILD="${XDG_CACHE_HOME:-$HOME/.cache}/superfedora/forge-build"; FORGE_LOG="$TMP_BUILD/forge.log"
 mkdir -p "$TMP_BUILD" "$STATE_DIR" "$STAMP_DIR" "$LEGACY_STAMP_DIR" "$BIN_DIR"; FORGE_ACTIVE_TARGET=""; CURRENT_TMP=""
 export TMPDIR="$TMP_BUILD" PATH="$BIN_DIR:$HOME/.cargo/bin:$SYSROOT/bin:$SYSROOT/lib/golang/bin:$SYSROOT/libexec/qt6:/usr/bin:/bin:$PATH"
-[[ -d "$SYSROOT" ]] && export LD_LIBRARY_PATH="$SYSROOT/lib64:${LD_LIBRARY_PATH:-}" LIBRARY_PATH="$SYSROOT/lib64:$HOME/.local/usr/lib64:$HOME/.local/lib:/usr/lib64" CPATH="$SYSROOT/include:$HOME/.local/usr/include" PKG_CONFIG_PATH="$SYSROOT/lib64/pkgconfig:$SYSROOT/share/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig" CMAKE_PREFIX_PATH="$SYSROOT;/usr"
+export LD_LIBRARY_PATH="$SYSROOT/lib64:${LD_LIBRARY_PATH:-}" LIBRARY_PATH="$SYSROOT/lib64:$HOME/.local/usr/lib64:$HOME/.local/lib:/usr/lib64" CPATH="$SYSROOT/include:$SYSROOT/include/ffmpeg:$HOME/.local/usr/include" PKG_CONFIG_PATH="$SYSROOT/lib64/pkgconfig:$SYSROOT/share/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig" CMAKE_PREFIX_PATH="$SYSROOT;/usr" LIBCLANG_PATH="$SYSROOT/lib64" BINDGEN_EXTRA_CLANG_ARGS="-I$SYSROOT/include -I$SYSROOT/include/ffmpeg" PYTHONPATH="$SYSROOT/lib/python3.14/site-packages:$SYSROOT/lib64/python3.14/site-packages:${PYTHONPATH:-}"
 
 set_live() {
     [[ "${DRY:-0}" -eq 1 ]] && { echo "$5"; return 0; }; [[ "$1" == "1" ]] && FORGE_ACTIVE_TARGET="$3" || FORGE_ACTIVE_TARGET=""
@@ -48,12 +48,12 @@ detect_hw() {
 
 ensure_pkgs() {
     local -a missing=(); local p l f
-    for p in "$@"; do [[ "$p" =~ ^(gcc|gcc-c\+\+|make|cmake|ninja-build)$ ]] && command -v "${p%-build}" >/dev/null 2>&1 && continue; rpm -q --quiet "$p" 2>/dev/null || [[ -f "$HOME/.local/pkg_cache/.ok-$p" ]] || missing+=("$p"); done
+    for p in "$@"; do [[ "$p" == "ffmpeg-free-devel" ]] && rpm -q --quiet ffmpeg-libs 2>/dev/null && p="ffmpeg-devel"; [[ "$p" =~ ^(gcc|gcc-c\+\+|make|cmake|ninja-build)$ ]] && command -v "${p%-build}" >/dev/null 2>&1 && continue; rpm -q --quiet "$p" 2>/dev/null || [[ -f "$HOME/.local/pkg_cache/.ok-$p" ]] || missing+=("$p"); done
     [[ ${#missing[@]} -eq 0 ]] && return 0
     if [[ $EUID -eq 0 ]]; then dnf install -y "${missing[@]}"; elif [[ "${INSTALL_DEPS:-0}" -eq 1 ]]; then sudo dnf install -y "${missing[@]}"
     else
         echo "[+] Staging build headers into user sysroot: ${missing[*]}" | tee -a "$FORGE_LOG"; mkdir -p "$HOME/.local/pkg_cache" "$SYSROOT/lib64" "$SYSROOT/bin" "$SYSROOT/libexec/qt6"
-        dnf download --resolve --arch="$(uname -m)" --arch=noarch --destdir="$HOME/.local/pkg_cache" "${missing[@]}" >/dev/null 2>&1 || true
+        dnf download --resolve --arch="$(uname -m)" --arch=noarch --destdir="$HOME/.local/pkg_cache" "${missing[@]}" >/dev/null 2>&1 || dnf download --arch="$(uname -m)" --arch=noarch --destdir="$HOME/.local/pkg_cache" "${missing[@]}" >/dev/null 2>&1 || true
         for p in "$HOME/.local/pkg_cache"/*.rpm; do [[ -f "$p" && ! -f "$HOME/.local/pkg_cache/.extracted-$(basename "$p")" ]] && (cd "$HOME/.local/sysroot" && rpm2cpio "$p" 2>/dev/null | cpio -idmu --quiet 2>/dev/null || true) && touch "$HOME/.local/pkg_cache/.extracted-$(basename "$p")"; done
         for f in /usr/lib64/lib*.so*; do [[ -e "$SYSROOT/lib64/${f##*/}" ]] || ln -s "$f" "$SYSROOT/lib64/${f##*/}" 2>/dev/null || true; done
         for f in /usr/libexec/qt6/*; do [[ -e "$SYSROOT/libexec/qt6/${f##*/}" ]] || ln -s "$f" "$SYSROOT/libexec/qt6/${f##*/}" 2>/dev/null || true; done
@@ -63,9 +63,9 @@ ensure_pkgs() {
         sed -i "s|$HOME/.local/sysroot||g; s|/usr/lib64/libc_nonshared.a|$SYSROOT/lib64/libc_nonshared.a|g; s|/usr/lib64/libmvec_nonshared.a|$SYSROOT/lib64/libmvec_nonshared.a|g" "$SYSROOT/lib64/libc.so" "$SYSROOT/lib64/libm.so" 2>/dev/null || true
         sed -i "s|$HOME/.local/sysroot||g; s|^prefix=/usr$|prefix=$SYSROOT|g; s|/usr/include|$SYSROOT/include|g; s|/usr/lib64|$SYSROOT/lib64|g" "$SYSROOT"/lib64/pkgconfig/*.pc "$SYSROOT"/share/pkgconfig/*.pc 2>/dev/null || true
         find "$SYSROOT/lib64/cmake" -name "*.cmake" -exec sed -i "s|$HOME/.local/sysroot||g; s|/usr/include|$SYSROOT/include|g; s|/usr/lib64/qt6|$SYSROOT/lib64/qt6|g; s|/usr/libexec/qt6|$SYSROOT/libexec/qt6|g" {} + 2>/dev/null || true
-        sed -i 's/!isnormal(val)/!__builtin_isnormal(val)/g; s/isinf(val)/__builtin_isinf(val)/g; s/signbit(val)/__builtin_signbit(val)/g' "$SYSROOT/include/spa-0.2/spa/utils/json-core.h" 2>/dev/null || true
+        sed -i -E 's/(__builtin_)*isnormal\(val\)/__builtin_isnormal(val)/g; s/(__builtin_)*isinf\(val\)/__builtin_isinf(val)/g; s/(__builtin_)*signbit\(val\)/__builtin_signbit(val)/g' "$SYSROOT/include/spa-0.2/spa/utils/json-core.h" 2>/dev/null || true
         [[ -x "$SYSROOT/bin/qmake6" ]] && printf '[Paths]\nPrefix = %s\nArchData = lib64/qt6\nData = share/qt6\nHeaders = include/qt6\nLibraries = lib64\nLibraryExecutables = lib64/qt6/libexec\nBinaries = lib64/qt6/bin\nHostPrefix = %s\nHostData = lib64/qt6\nHostBinaries = lib64/qt6/bin\nHostLibraryExecutables = lib64/qt6/libexec\nHostLibraries = lib64\n' "$SYSROOT" "$SYSROOT" > "$SYSROOT/bin/qt.conf"
-        for p in "${missing[@]}"; do touch "$HOME/.local/pkg_cache/.ok-$p"; done
+        for p in "${missing[@]}"; do compgen -G "$HOME/.local/pkg_cache/${p}-[0-9]*.rpm" >/dev/null && touch "$HOME/.local/pkg_cache/.ok-$p" || true; done
     fi
 }
 
@@ -74,14 +74,14 @@ preset_deps() {
         superfedora|supertheme|superforge|supershell|supernotify|superagent|tuigreet|ripgrep|rg|fd|zoxide|yazi|dua-cli|csvlens|fend) echo "gcc make" ;;
         ouch) echo "gcc make pkgconf-pkg-config bzip2-devel xz-devel libzstd-devel" ;; typst) echo "gcc make pkgconf-pkg-config openssl-devel" ;; helix|btop) echo "gcc gcc-c++ make" ;;
         oculante) echo "gcc cmake make pkgconf-pkg-config gtk3-devel libX11-devel libxcb-devel" ;; satty) echo "gcc make pkgconf-pkg-config gtk4-devel libadwaita-devel libepoxy-devel fontconfig-devel" ;;
-        wl-screenrec) echo "gcc clang make pkgconf-pkg-config ffmpeg-free-devel libdrm-devel wayland-devel" ;; termusic) echo "gcc clang make pkgconf-pkg-config alsa-lib-devel dbus-devel protobuf-compiler gstreamer1-devel gstreamer1-plugins-base-devel" ;;
+        wl-screenrec) echo "gcc clang clang-devel make pkgconf-pkg-config ffmpeg-free-devel libdrm-devel wayland-devel" ;; termusic) echo "gcc clang clang-devel make pkgconf-pkg-config alsa-lib-devel dbus-devel protobuf-compiler gstreamer1-devel gstreamer1-plugins-base-devel" ;;
         imv) echo "gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel libxkbcommon-devel pango-devel cairo-devel librsvg2-devel libjpeg-turbo-devel libpng-devel libwebp-devel inih-devel libicu-devel imv" ;;
         hyprpicker) echo "gcc-c++ cmake ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel cairo-devel pango-devel libxkbcommon-devel libjpeg-turbo-devel hyprutils-devel hyprwayland-scanner-devel hyprpicker" ;;
         zathura) echo "gcc meson ninja-build pkgconf-pkg-config gtk3-devel glib2-devel cairo-devel sqlite-devel girara-devel json-glib-devel libseccomp-devel zathura zathura-pdf-mupdf" ;;
         cava) echo "gcc cmake ninja-build pkgconf-pkg-config fftw-devel alsa-lib-devel pipewire-devel iniparser-devel ncurses-devel cava" ;; cliphist) echo "golang cliphist" ;; bazarr) echo "python3 python3-pip gcc libxml2-devel libxslt-devel" ;;
         mpv) echo "gcc meson ninja-build pkgconf-pkg-config ffmpeg-free-devel libplacebo-devel libass-devel wayland-devel wayland-protocols-devel libxkbcommon-devel libva-devel libdrm-devel mesa-libEGL-devel pipewire-devel luajit-devel mpv" ;;
         idlescreen) echo "gcc make pkgconf-pkg-config wayland-devel libxkbcommon-devel dbus-devel" ;; fastfetch) echo "gcc gcc-c++ cmake ninja-build pkgconf-pkg-config pciutils-devel wayland-devel libdrm-devel glib2-devel" ;;
-        wlctl|bluetui) echo "gcc make pkgconf-pkg-config dbus-devel" ;; wiremix) echo "gcc clang make pkgconf-pkg-config pipewire-devel alsa-lib-devel" ;;
+        wlctl|bluetui) echo "gcc make pkgconf-pkg-config dbus-devel" ;; wiremix) echo "gcc clang clang-devel make pkgconf-pkg-config pipewire-devel alsa-lib-devel" ;;
         fuzzel) echo "gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel libxkbcommon-devel pixman-devel cairo-devel pango-devel fcft-devel tllist-devel fontconfig-devel libpng-devel librsvg2-devel scdoc" ;;
         openrgb) echo "gcc-c++ make pkgconf-pkg-config qt6-qtbase-devel qt6-linguist hidapi-devel libusb1-devel mbedtls-devel" ;;
         hyprland) echo "gcc-c++ cmake meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel cairo-devel pango-devel pixman-devel libdrm-devel mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel libinput-devel libxkbcommon-devel libuuid-devel tomlplusplus-devel hyprlang-devel hyprcursor-devel hyprutils-devel hyprwayland-scanner-devel aquamarine-devel hyprgraphics-devel hyprwire-devel glaze-devel re2-devel muParser-devel libdisplay-info-devel libliftoff-devel libseat-devel hwdata-devel xcb-util-devel xcb-util-wm-devel xcb-util-errors-devel xcb-util-renderutil-devel xcb-util-keysyms-devel xcb-util-image-devel xorg-x11-server-Xwayland-devel libXcursor-devel systemd-devel lua-devel readline-devel" ;;
@@ -97,7 +97,7 @@ record_forge() {
     python3 -c 'import json,os,re,sys; p,name,repo,bpath,bsys,arch,lnk,ver,sha,fl,ts=sys.argv[1:12]; ver=re.sub(r"\x1b\[[0-9;]*m","",ver).strip(); d=json.load(open(p)) if os.path.exists(p) else {}; d.setdefault("targets",{})[name]={"type":"source","repo":repo,"binary":bpath,"build_system":bsys,"march":arch,"linker":lnk,"version":ver,"sha":sha,"commit":sha,"flags":fl,"timestamp":ts,"built_at":ts}; json.dump(d,open(p,"w"),indent=2)' "$FORGE_JSON" "$name" "$repo" "$BIN_DIR/$bin" "$sys" "$MARCH_TARGET" "$LINKER" "$ver" "$sha" "$HOST_CFLAGS | $HOST_RUSTFLAGS" "$ts"
 }
 install_bin() {
-    local src="$1" dst_name="${2:-$(basename "$1")}"; mkdir -p "$BIN_DIR"
+    local src="$1" dst_name="${2:-$(basename "$1")}"; [[ -n "$src" && -x "$src" ]] || { echo "[FAIL] Missing built binary for $dst_name" | tee -a "$FORGE_LOG"; return 1; }; mkdir -p "$BIN_DIR"
     install -m 755 "$src" "$BIN_DIR/.${dst_name}.tmp.$$" && mv -f "$BIN_DIR/.${dst_name}.tmp.$$" "$BIN_DIR/$dst_name"
     [[ "$dst_name" == "superfedora" ]] && { [[ -d "$SF_ROOT/bin" ]] && { install -m 755 "$src" "$SF_ROOT/bin/.sf.tmp.$$" && mv -f "$SF_ROOT/bin/.sf.tmp.$$" "$SF_ROOT/bin/superfedora"; }; ln -sf superfedora "$BIN_DIR/sf"; [[ -w /usr/local/bin && "${SUPERFEDORA_SYSTEM_WIDE:-0}" == "1" ]] && { install -m 755 "$src" /usr/local/bin/superfedora; ln -sf superfedora /usr/local/bin/sf; } || true; }
     echo "[OK] Installed $BIN_DIR/$dst_name (-march=$MARCH_TARGET, linker=$LINKER)" | tee -a "$FORGE_LOG"
@@ -134,16 +134,16 @@ forge_generic_dir() {
         if [[ "$name" == "supershell" ]]; then for sb in superdock superbar supersettings supernotify superlock; do [[ -x "${found%/*}/$sb" ]] && install_bin "${found%/*}/$sb" "$sb"; done; fi
     elif [[ -f "$dir/CMakeLists.txt" ]]; then
         local gen="-G Unix Makefiles" extra_cmake="-DBUILD_TESTING=OFF -DCMAKE_PREFIX_PATH=$SYSROOT;/usr"; command -v ninja >/dev/null 2>&1 && gen="-G Ninja"
-        [[ "$name" == "quickshell" ]] && extra_cmake="$extra_cmake -DCRASH_HANDLER=OFF -DCRASH_REPORTER=OFF -DDISTRIBUTOR=SuperFedora"; [[ "$name" == "hyprland" ]] && extra_cmake="$extra_cmake -DNO_TESTS=ON -DNO_HYPRPM=OFF"
+        [[ "$name" == "quickshell" ]] && extra_cmake="$extra_cmake -DCRASH_HANDLER=OFF -DCRASH_REPORTER=OFF -DDISTRIBUTOR=SuperFedora"; [[ "$name" == "hyprland" ]] && extra_cmake="$extra_cmake -DNO_TESTS=ON -DNO_HYPRPM=OFF"; local c_lto="-ffat-lto-objects"; [[ "$name" == "cava" ]] && c_lto="-fno-lto"
         # shellcheck disable=SC2086
-        (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS -ffat-lto-objects" CXXFLAGS="$HOST_CXXFLAGS -ffat-lto-objects" LDFLAGS="$HOST_LDFLAGS -L$SYSROOT/lib64" cmake -B "$dir/build" -S "$dir" $gen -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -Wno-dev $extra_cmake 2>&1 | tee -a "$FORGE_LOG" && cmake --build "$dir/build" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG") || true
+        (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS $c_lto" CXXFLAGS="$HOST_CXXFLAGS $c_lto" LDFLAGS="$HOST_LDFLAGS -L$SYSROOT/lib64 $c_lto" cmake -B "$dir/build" -S "$dir" $gen -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -Wno-dev $extra_cmake 2>&1 | tee -a "$FORGE_LOG" && cmake --build "$dir/build" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG") || true
         found="$(find "$dir/build" -type f -executable -name "$bin_hint" 2>/dev/null | head -1 || true)"; [[ -n "$found" ]] || found="$(find "$dir/build" -maxdepth 3 -type f -executable ! -name '*.so*' ! -name 'CMake*' 2>/dev/null | head -1 || true)"
         [[ -x "${found:-}" ]] || { [[ -x "$SYSROOT/bin/$bin_hint" ]] && found="$SYSROOT/bin/$bin_hint" || found="$(command -v "$bin_hint" || true)"; }
         install_bin "$found" "$bin_hint"; [[ "$name" == "quickshell" ]] && install_bin "$found" "qs"
         [[ "$name" == "hyprland" ]] && { local hctl; hctl="$(find "$dir/build" -type f -executable -name "hyprctl" 2>/dev/null | head -1 || true)"; [[ -n "$hctl" ]] && install_bin "$hctl" "hyprctl"; }
         record_forge "$name" "$repo" "$bin_hint" "cmake" "$sha"
     elif [[ -f "$dir/meson.build" ]]; then
-        (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" LDFLAGS="$HOST_LDFLAGS" meson setup "$dir/build" "$dir" --prefix="$HOME/.local" -Dbuildtype=release -Db_lto=true 2>&1 | tee -a "$FORGE_LOG" && ninja -C "$dir/build" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG") || true
+        local margs=""; [[ "$name" == "imv" ]] && margs="-Dwindows=wayland -Dman=disabled"; (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" LDFLAGS="$HOST_LDFLAGS" meson setup "$dir/build" "$dir" --prefix="$HOME/.local" -Dbuildtype=release -Db_lto=true $margs 2>&1 | tee -a "$FORGE_LOG" && ninja -C "$dir/build" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG") || true
         found="$(find "$dir/build" -type f -executable -name "$bin_hint" 2>/dev/null | head -1 || true)"; [[ -x "${found:-}" ]] || { [[ -x "$SYSROOT/bin/$bin_hint" ]] && found="$SYSROOT/bin/$bin_hint" || found="$(command -v "$bin_hint" || true)"; }
         install_bin "$found" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "meson" "$sha"
     elif compgen -G "$dir/*.pro" >/dev/null; then

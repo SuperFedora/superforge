@@ -1,5 +1,4 @@
 # SuperFedora SuperForge Declarative Native Recipe Catalog (-O3 -march=native / LTO)
-
 [[recipe]]
 name = "superfedora"
 binary = "superfedora"
@@ -8,7 +7,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/superfedora.git"
 deps = ["gcc", "make"]
 description = "16-Bit Rust Workstation Engine & Orchestrator TUI (alias: sf)"
-
 [[recipe]]
 name = "supertheme"
 binary = "supertheme"
@@ -16,7 +14,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/supertheme.git"
 deps = ["gcc", "make"]
 description = "16-Bit Theme, Wallpaper, Palette & WAV SFX Engine"
-
 [[recipe]]
 name = "superforge"
 binary = "superforge"
@@ -24,7 +21,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/superforge.git"
 deps = ["gcc", "make"]
 description = "Hardware-Tuned Source Builder & Chromeless Firefox WebApp Engine"
-
 [[recipe]]
 name = "supershell"
 binary = "superdock"
@@ -32,7 +28,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/supershell.git"
 deps = ["gcc", "make"]
 description = "16-Bit Desktop Shell Suite (superdock, superbar, supersettings, superlock)"
-
 [[recipe]]
 name = "supernotify"
 binary = "supernotify"
@@ -40,7 +35,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/supernotify.git"
 deps = ["gcc", "make"]
 description = "16-Bit Animated Cast Comms (10 Specialists), Stage Banners & Notification Engine"
-
 [[recipe]]
 name = "superagent"
 binary = "superagent"
@@ -48,7 +42,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/superagent.git"
 deps = ["gcc", "make"]
 description = "Autonomous Workstation Agent (OpenClaw, Ollama & Cast Comms Daemon)"
-
 [[recipe]]
 name = "ripgrep"
 binary = "rg"
@@ -56,7 +49,6 @@ build_system = "cargo"
 repo = "https://github.com/BurntSushi/ripgrep.git"
 deps = ["gcc", "make"]
 description = "SIMD-accelerated regex search tool"
-
 [[recipe]]
 name = "fastfetch"
 binary = "fastfetch"
@@ -64,7 +56,6 @@ build_system = "cmake"
 repo = "https://github.com/fastfetch-cli/fastfetch.git"
 deps = ["gcc", "gcc-c++", "cmake", "ninja-build", "pkgconf-pkg-config", "pciutils-devel", "wayland-devel", "libdrm-devel", "glib2-devel"]
 description = "Native C system info fetcher"
-
 [[recipe]]
 name = "idlescreen"
 binary = "idlescreen"
@@ -72,7 +63,6 @@ build_system = "cargo"
 repo = "https://github.com/idlescreen/idlescreen.git"
 deps = ["gcc", "make", "pkgconf-pkg-config", "wayland-devel", "libxkbcommon-devel", "dbus-devel"]
 description = "16-Bit Wayland idle screensaver daemon"
-
 [[recipe]]
 name = "fd"
 binary = "fd"
@@ -80,7 +70,6 @@ build_system = "cargo"
 repo = "https://github.com/sharkdp/fd.git"
 deps = ["gcc", "make"]
 description = "Fast parallel filesystem finder"
-
 [[recipe]]
 name = "zoxide"
 binary = "zoxide"
@@ -88,7 +77,6 @@ build_system = "cargo"
 repo = "https://github.com/ajeetdsouza/zoxide.git"
 deps = ["gcc", "make"]
 description = "Smarter cd directory jumper"
-
 [[recipe]]
 name = "btop"
 binary = "btop"
@@ -96,7 +84,6 @@ build_system = "make"
 repo = "https://github.com/aristocratos/btop.git"
 deps = ["gcc-c++", "make"]
 description = "C++20 hardware & GPU monitor"
-
 [[recipe]]
 name = "wlctl"
 binary = "wlctl"
@@ -104,7 +91,6 @@ build_system = "cargo"
 repo = "https://github.com/aashish-thapa/wlctl.git"
 deps = ["gcc", "make", "pkgconf-pkg-config", "dbus-devel"]
 description = "16-Bit TUI Wi-Fi / NetworkManager controller"
-
 [[recipe]]
 name = "bluetui"
 binary = "bluetui"
@@ -112,15 +98,13 @@ build_system = "cargo"
 repo = "https://github.com/pythops/bluetui.git"
 deps = ["gcc", "make", "pkgconf-pkg-config", "dbus-devel"]
 description = "16-Bit TUI Bluetooth manager"
-
 [[recipe]]
 name = "wiremix"
 binary = "wiremix"
 build_system = "cargo"
 repo = "https://github.com/tsowell/wiremix.git"
-deps = ["gcc", "clang", "make", "pkgconf-pkg-config", "pipewire-devel", "alsa-lib-devel"]
+deps = ["gcc", "clang", "clang-devel", "make", "pkgconf-pkg-config", "pipewire-devel", "alsa-lib-devel"]
 description = "16-Bit PipeWire TUI audio mixer"
-
 [[recipe]]
 name = "fuzzel"
 binary = "fuzzel"
@@ -128,7 +112,6 @@ build_system = "meson"
 repo = "https://codeberg.org/dnkl/fuzzel.git"
 deps = ["gcc", "meson", "ninja-build", "pkgconf-pkg-config", "wayland-devel", "wayland-protocols-devel", "libxkbcommon-devel", "pixman-devel", "cairo-devel", "pango-devel", "fcft-devel", "tllist-devel", "fontconfig-devel", "libpng-devel", "librsvg2-devel", "scdoc"]
 description = "Wayland native app launcher"
-
 [[recipe]]
 name = "openrgb"
 binary = "openrgb"
@@ -136,7 +119,6 @@ build_system = "qmake"
 repo = "https://gitlab.com/CalcProgrammer1/OpenRGB.git"
 deps = ["gcc-c++", "make", "pkgconf-pkg-config", "qt6-qtbase-devel", "qt6-linguist", "hidapi-devel", "libusb1-devel", "mbedtls-devel"]
 description = "Open source RGB lighting control"
-
 [[recipe]]
 name = "hyprland"
 binary = "Hyprland"
@@ -144,7 +126,6 @@ build_system = "cmake"
 repo = "https://github.com/hyprwm/Hyprland.git"
 deps = ["gcc-c++", "cmake", "meson", "ninja-build", "pkgconf-pkg-config", "wayland-devel", "wayland-protocols-devel"]
 description = "Dynamic tiling Wayland compositor"
-
 [[recipe]]
 name = "quickshell"
 binary = "quickshell"
@@ -152,7 +133,6 @@ build_system = "cmake"
 repo = "https://github.com/quickshell-mirror/quickshell.git"
 deps = ["gcc-c++", "cmake", "ninja-build", "pkgconf-pkg-config", "spirv-tools", "qt6-qtbase-devel", "qt6-qtdeclarative-devel", "qt6-qtwayland-devel"]
 description = "Qt6 Wayland shell toolkit"
-
 [[recipe]]
 name = "yazi"
 binary = "yazi"
@@ -160,7 +140,6 @@ build_system = "cargo"
 repo = "https://github.com/sxyazi/yazi.git"
 deps = ["gcc", "make"]
 description = "Blazing fast terminal file manager with image preview"
-
 [[recipe]]
 name = "dua-cli"
 binary = "dua"
@@ -168,7 +147,6 @@ build_system = "cargo"
 repo = "https://github.com/Byron/dua-cli.git"
 deps = ["gcc", "make"]
 description = "Interactive disk usage analyzer & cleaner"
-
 [[recipe]]
 name = "ouch"
 binary = "ouch"
@@ -176,7 +154,6 @@ build_system = "cargo"
 repo = "https://github.com/ouch-org/ouch.git"
 deps = ["gcc", "make", "pkgconf-pkg-config", "bzip2-devel", "xz-devel", "libzstd-devel"]
 description = "Painless archive compression & extraction tool"
-
 [[recipe]]
 name = "oculante"
 binary = "oculante"
@@ -184,7 +161,6 @@ build_system = "cargo"
 repo = "https://github.com/woelper/oculante.git"
 deps = ["gcc", "cmake", "make", "pkgconf-pkg-config", "gtk3-devel", "libX11-devel", "libxcb-devel"]
 description = "Fast GPU-accelerated image viewer & quick editor"
-
 [[recipe]]
 name = "imv"
 binary = "imv"
@@ -192,7 +168,6 @@ build_system = "meson"
 repo = "https://git.sr.ht/~exec64/imv"
 deps = ["gcc", "meson", "ninja-build", "pkgconf-pkg-config", "wayland-devel", "wayland-protocols-devel", "libxkbcommon-devel", "pango-devel", "cairo-devel", "librsvg2-devel", "libjpeg-turbo-devel", "libpng-devel", "libwebp-devel", "inih-devel", "libicu-devel"]
 description = "Wayland native image viewer for tiling window managers"
-
 [[recipe]]
 name = "satty"
 binary = "satty"
@@ -200,7 +175,6 @@ build_system = "cargo"
 repo = "https://github.com/gabm/Satty.git"
 deps = ["gcc", "make", "pkgconf-pkg-config", "gtk4-devel", "libadwaita-devel", "libepoxy-devel", "fontconfig-devel"]
 description = "Modern Wayland screenshot annotation tool"
-
 [[recipe]]
 name = "hyprpicker"
 binary = "hyprpicker"
@@ -208,15 +182,13 @@ build_system = "cmake"
 repo = "https://github.com/hyprwm/hyprpicker.git"
 deps = ["gcc-c++", "cmake", "ninja-build", "pkgconf-pkg-config", "wayland-devel", "wayland-protocols-devel", "cairo-devel", "pango-devel", "libxkbcommon-devel", "libjpeg-turbo-devel", "hyprutils-devel", "hyprwayland-scanner-devel"]
 description = "wlroots/Hyprland Wayland color picker"
-
 [[recipe]]
 name = "wl-screenrec"
 binary = "wl-screenrec"
 build_system = "cargo"
 repo = "https://github.com/russelltg/wl-screenrec.git"
-deps = ["gcc", "clang", "make", "pkgconf-pkg-config", "ffmpeg-free-devel", "libdrm-devel", "wayland-devel"]
+deps = ["gcc", "clang", "clang-devel", "make", "pkgconf-pkg-config", "ffmpeg-free-devel", "libdrm-devel", "wayland-devel"]
 description = "High-performance VA-API hardware screen recorder"
-
 [[recipe]]
 name = "zathura"
 binary = "zathura"
@@ -224,7 +196,6 @@ build_system = "meson"
 repo = "https://github.com/pwmt/zathura.git"
 deps = ["gcc", "meson", "ninja-build", "pkgconf-pkg-config", "gtk3-devel", "glib2-devel", "cairo-devel", "sqlite-devel", "girara-devel", "json-glib-devel", "libseccomp-devel"]
 description = "Keyboard-driven PDF & EPUB document viewer"
-
 [[recipe]]
 name = "typst"
 binary = "typst"
@@ -232,7 +203,6 @@ build_system = "cargo"
 repo = "https://github.com/typst/typst.git"
 deps = ["gcc", "make", "pkgconf-pkg-config", "openssl-devel"]
 description = "Modern markup-based typesetting & PDF compiler"
-
 [[recipe]]
 name = "csvlens"
 binary = "csvlens"
@@ -240,7 +210,6 @@ build_system = "cargo"
 repo = "https://github.com/YS-L/csvlens.git"
 deps = ["gcc", "make"]
 description = "Interactive terminal CSV file viewer"
-
 [[recipe]]
 name = "helix"
 binary = "hx"
@@ -248,7 +217,6 @@ build_system = "cargo"
 repo = "https://github.com/helix-editor/helix.git"
 deps = ["gcc", "gcc-c++", "make"]
 description = "Post-modern modal terminal text editor"
-
 [[recipe]]
 name = "fend"
 binary = "fend"
@@ -256,15 +224,13 @@ build_system = "cargo"
 repo = "https://github.com/printfn/fend.git"
 deps = ["gcc", "make"]
 description = "Arbitrary-precision unit-aware calculator"
-
 [[recipe]]
 name = "termusic"
 binary = "termusic"
 build_system = "cargo"
 repo = "https://github.com/tramhao/termusic.git"
-deps = ["gcc", "clang", "make", "pkgconf-pkg-config", "alsa-lib-devel", "dbus-devel", "protobuf-compiler", "gstreamer1-devel", "gstreamer1-plugins-base-devel"]
+deps = ["gcc", "clang", "clang-devel", "make", "pkgconf-pkg-config", "alsa-lib-devel", "dbus-devel", "protobuf-compiler", "gstreamer1-devel", "gstreamer1-plugins-base-devel"]
 description = "Terminal music & podcast player TUI"
-
 [[recipe]]
 name = "cava"
 binary = "cava"
@@ -272,7 +238,6 @@ build_system = "cmake"
 repo = "https://github.com/karlstav/cava.git"
 deps = ["gcc", "cmake", "ninja-build", "pkgconf-pkg-config", "fftw-devel", "alsa-lib-devel", "pipewire-devel", "iniparser-devel", "ncurses-devel"]
 description = "Cross-platform PipeWire audio spectrum visualizer"
-
 [[recipe]]
 name = "mpv"
 binary = "mpv"
@@ -280,7 +245,6 @@ build_system = "meson"
 repo = "https://github.com/mpv-player/mpv.git"
 deps = ["gcc", "meson", "ninja-build", "pkgconf-pkg-config", "ffmpeg-free-devel", "libplacebo-devel", "libass-devel", "wayland-devel", "wayland-protocols-devel", "libxkbcommon-devel", "libva-devel", "libdrm-devel", "mesa-libEGL-devel", "pipewire-devel", "luajit-devel"]
 description = "Wayland VA-API hardware-accelerated media player"
-
 [[recipe]]
 name = "cliphist"
 binary = "cliphist"
@@ -288,7 +252,6 @@ build_system = "go"
 repo = "https://github.com/sentriz/cliphist.git"
 deps = ["golang"]
 description = "Wayland clipboard history manager for fuzzel"
-
 [[recipe]]
 name = "bazarr"
 binary = "bazarr"

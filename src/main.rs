@@ -15,7 +15,7 @@ use std::io::{self, IsTerminal};
 use std::process;
 
 fn print_help() {
-    println!("SuperForge v0.5.0 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
+    println!("SuperForge v0.5.1 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
     println!("Usage:");
     println!("  superforge                                  Launch TUI (or print status if non-TTY)");
     println!("  superforge tui                              Launch interactive 16-Bit Forge TUI");
@@ -50,7 +50,7 @@ fn main() {
                 return;
             }
             "-V" | "--version" | "version" => {
-                println!("superforge 0.5.0 (SuperFedora/superforge — Rust 1.99 Native Engine)");
+                println!("superforge 0.5.1 (SuperFedora/superforge — Rust 1.99 Native Engine)");
                 return;
             }
             "tui" => {
