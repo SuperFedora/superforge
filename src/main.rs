@@ -28,7 +28,15 @@ fn print_help() {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
+    let mut args: Vec<String> = env::args().skip(1).collect();
+    if matches!(args.first().map(|s| s.as_str()), Some("build" | "forge" | "install")) {
+        args.remove(0);
+        if args.is_empty() {
+            args.push("status".into());
+        } else if args.len() == 1 && (args[0] == "--force" || args[0] == "-f") {
+            args = vec!["all".into(), "--force".into()];
+        }
+    }
     if let Some(first) = args.first().map(|s| s.as_str()) {
         match first {
             "-h" | "--help" | "help" => {

@@ -25,6 +25,7 @@ export TMPDIR="$TMP_BUILD" PATH="$BIN_DIR:$HOME/.cargo/bin:$SYSROOT/bin:$SYSROOT
 [[ -d "$SYSROOT" ]] && export LD_LIBRARY_PATH="$SYSROOT/lib64:${LD_LIBRARY_PATH:-}" LIBRARY_PATH="$SYSROOT/lib64:$HOME/.local/usr/lib64:$HOME/.local/lib:/usr/lib64" CPATH="$SYSROOT/include:$HOME/.local/usr/include" PKG_CONFIG_PATH="$SYSROOT/lib64/pkgconfig:$SYSROOT/share/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig" CMAKE_PREFIX_PATH="$SYSROOT;/usr"
 
 set_live() {
+    [[ "${DRY:-0}" -eq 1 ]] && { echo "$5"; return 0; }
     [[ "$1" == "1" ]] && FORGE_ACTIVE_TARGET="$3" || FORGE_ACTIVE_TARGET=""
     python3 -c 'import json,sys,time; p,a,st,t,pct,s=sys.argv[1:7]; json.dump({"active":a=="1","state":st,"target":t,"pct":int(pct),"step":s,"ts":int(time.time())},open(p,"w"))' "$LIVE_JSON" "$1" "$2" "$3" "$4" "$5" 2>/dev/null || true
     echo "$5" | tee -a "$FORGE_LOG"; command -v qs >/dev/null 2>&1 && { qs ipc call status reloadForge >/dev/null 2>&1 || qs ipc call status refresh >/dev/null 2>&1 || true; }
@@ -74,7 +75,7 @@ ensure_pkgs() {
 
 preset_deps() {
     case "$1" in
-        superfedora|supertheme|superforge|supershell|superagent|ripgrep|rg|fd|zoxide) echo "gcc make" ;;
+        superfedora|supertheme|superforge|supershell|superagent|tuigreet|ripgrep|rg|fd|zoxide) echo "gcc make" ;;
         idlescreen)  echo "gcc make pkgconf-pkg-config wayland-devel libxkbcommon-devel dbus-devel" ;;
         fastfetch)   echo "gcc gcc-c++ cmake ninja-build pkgconf-pkg-config pciutils-devel wayland-devel libdrm-devel glib2-devel" ;;
         btop)        echo "gcc-c++ make" ;;
@@ -184,7 +185,7 @@ forge_target() {
         btop|aristocratos/btop) name="btop"; repo="https://github.com/aristocratos/btop.git"; bin="btop" ;;
         wlctl|aashish-thapa/wlctl) name="wlctl"; repo="https://github.com/aashish-thapa/wlctl.git"; bin="wlctl" ;;
         bluetui|pythops/bluetui) name="bluetui"; repo="https://github.com/pythops/bluetui.git"; bin="bluetui" ;;
-        wiremix|tsowell/wiremix) name="wiremix"; repo="https://github.com/tsowell/wiremix.git"; bin="wiremix" ;;
+        wiremix|tsowell/wiremix|tuigreet|apognu/tuigreet) [[ "${raw,,}" == *tuigreet* ]] && { name="tuigreet"; repo="https://github.com/apognu/tuigreet.git"; bin="tuigreet"; } || { name="wiremix"; repo="https://github.com/tsowell/wiremix.git"; bin="wiremix"; } ;;
         fuzzel|dnkl/fuzzel) name="fuzzel"; repo="https://codeberg.org/dnkl/fuzzel.git"; bin="fuzzel" ;;
         openrgb|calcprogrammer1/openrgb) name="openrgb"; repo="https://gitlab.com/CalcProgrammer1/OpenRGB.git"; bin="openrgb" ;;
         hyprland|hyprwm/hyprland) name="hyprland"; repo="https://github.com/hyprwm/Hyprland.git"; bin="Hyprland"; git_branch="v$(rpm -q --qf '%{VERSION}' hyprland 2>/dev/null || echo 0.56.2)" ;;
@@ -241,7 +242,7 @@ FORCE=0; DRY=0; INSTALL_DEPS=0; PROF_MODE="shared"; NO_PIN=0; ARGS=()
 for a in "$@"; do
     case "$a" in --force|-f) FORCE=1 ;; --dry-run|-n) DRY=1 ;; --install) INSTALL_DEPS=1 ;; --isolated) PROF_MODE="isolated" ;; --shared) PROF_MODE="shared" ;; --no-pin) NO_PIN=1 ;; --name) ;; -h|--help|help) sed -n '7,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;; *) ARGS+=("$a") ;; esac
 done
-CMD="${ARGS[0]:-status}"
+[[ "${ARGS[0]:-}" =~ ^(build|forge|install)$ ]] && ARGS=("${ARGS[@]:1}"); CMD="${ARGS[0]:-status}"
 # shellcheck disable=SC2046
 case "$CMD" in
     deps) detect_hw; t="${ARGS[1]:-hyprland}"; echo "Dependencies for $t: $(preset_deps "$t")"; [[ $INSTALL_DEPS -eq 1 ]] && ensure_pkgs $(preset_deps "$t") || true ;;
