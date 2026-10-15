@@ -41,18 +41,19 @@ pub fn on_ac_power() -> bool {
     !discharging
 }
 
-fn repo_for_target(target: &str) -> (&str, &str) {
+fn repo_for_target(target: &str) -> (&str, Vec<&str>) {
     match target {
-        "superfedora" | "sf" => ("superfedora", "superfedora"),
-        "superforge" => ("superforge", "superforge"),
-        "supertheme" => ("supertheme", "supertheme"),
-        "supernotify" => ("supernotify", "supernotify"),
-        "supershell" | "superbar" => ("supershell", "superbar"),
-        "superdock" => ("supershell", "superdock"),
-        "supersettings" => ("supershell", "supersettings"),
-        "superlock" => ("supershell", "superlock"),
-        "superagent" => ("superagent", "superagent"),
-        other => (other, other),
+        "superfedora" | "sf" => ("superfedora", vec!["superfedora"]),
+        "superforge" => ("superforge", vec!["superforge"]),
+        "supertheme" => ("supertheme", vec!["supertheme"]),
+        "supernotify" => ("supernotify", vec!["supernotify"]),
+        "supershell" => ("supershell", vec!["superbar", "superdock", "supersettings", "superlock"]),
+        "superbar" => ("supershell", vec!["superbar"]),
+        "superdock" => ("supershell", vec!["superdock"]),
+        "supersettings" => ("supershell", vec!["supersettings"]),
+        "superlock" => ("supershell", vec!["superlock"]),
+        "superagent" => ("superagent", vec!["superagent"]),
+        other => (other, vec![other]),
     }
 }
 
@@ -70,52 +71,58 @@ pub fn run_fetch_bin(st: &mut ForgeState, args: &[String]) -> i32 {
             t => target = t,
         }
     }
-    let (repo, bin_name) = repo_for_target(target);
-    let url = format!(
-        "https://github.com/SuperFedora/{repo}/releases/latest/download/{bin_name}-x86_64-unknown-linux-musl"
-    );
+    let (repo, bin_names) = repo_for_target(target);
     let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
     let bin_dir = PathBuf::from(&home).join(".local/bin");
     let _ = fs::create_dir_all(&bin_dir);
-    let dst = bin_dir.join(bin_name);
 
-    println!("\x1b[1;38;5;141m[::] SUPERFORGE TIER-1 QUICK BINARY CACHE ({repo} -> {bin_name})\x1b[0m");
+    println!("\x1b[1;38;5;141m[::] SUPERFORGE TIER-1 QUICK BINARY CACHE ({repo} -> {})\x1b[0m", bin_names.join(", "));
     if dry {
-        println!("  [DRY-RUN] 1. Fetch Static Musl : curl -fsSL {url}");
-        println!("  [DRY-RUN] 2. Atomic Install    : {}", dst.display());
+        for bin_name in &bin_names {
+            let url = format!("https://github.com/SuperFedora/{repo}/releases/latest/download/{bin_name}-x86_64-unknown-linux-musl");
+            let dst = bin_dir.join(bin_name);
+            println!("  [DRY-RUN] 1. Fetch Static Musl : curl -fsSL {url}");
+            println!("  [DRY-RUN] 2. Atomic Install    : {}", dst.display());
+        }
         println!("  [DRY-RUN] 3. Fallback Tier-2   : superforge build {target} (-march=native)");
         return 0;
     }
 
-    let tmp = bin_dir.join(format!(".{bin_name}.tier1.tmp"));
-    let dl_ok = Command::new("curl")
-        .args(["-fsSL", "--max-time", "8", "-o"])
-        .arg(&tmp)
-        .arg(&url)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    let valid_elf = dl_ok
-        && fs::read(&tmp)
-            .map(|b| b.len() > 64 && b.starts_with(b"\x7fELF"))
+    let mut all_ok = true;
+    for bin_name in &bin_names {
+        let url = format!("https://github.com/SuperFedora/{repo}/releases/latest/download/{bin_name}-x86_64-unknown-linux-musl");
+        let dst = bin_dir.join(bin_name);
+        let tmp = bin_dir.join(format!(".{bin_name}.tier1.tmp"));
+        let dl_ok = Command::new("curl")
+            .args(["-fsSL", "--max-time", "8", "-o"])
+            .arg(&tmp)
+            .arg(&url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
             .unwrap_or(false);
-    if valid_elf {
-        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755));
-        let _ = fs::rename(&tmp, &dst);
+
+        let valid_elf = dl_ok && fs::read(&tmp).map(|b| b.len() > 64 && b.starts_with(b"\x7fELF")).unwrap_or(false);
+        if valid_elf {
+            let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755));
+            let _ = fs::rename(&tmp, &dst);
+            if *bin_name == "superfedora" {
+                let _ = std::os::unix::fs::symlink("superfedora", bin_dir.join("sf"));
+            }
+            println!("  [OK] Tier-1 prebuilt static musl binary installed: {}", dst.display());
+        } else {
+            let _ = fs::remove_file(&tmp);
+            if dst.is_file() {
+                println!("  [OK] Tier-1 binary already present at {} (queued for Tier-2 native re-forge).", dst.display());
+            } else {
+                all_ok = false;
+            }
+        }
+    }
+    if all_ok {
         let _ = fs::create_dir_all(st.state_dir.join("source-built"));
         let _ = fs::write(st.state_dir.join("source-built").join(format!("{repo}.tier")), "tier1-musl\n");
-        println!("  [OK] Tier-1 prebuilt static musl binary installed: {}", dst.display());
-        return 0;
-    }
-    let _ = fs::remove_file(&tmp);
-
-    if dst.is_file() {
-        let _ = fs::create_dir_all(st.state_dir.join("source-built"));
-        let _ = fs::write(st.state_dir.join("source-built").join(format!("{repo}.tier")), "tier1-cached\n");
-        println!("  [OK] Tier-1 binary already present at {} (queued for Tier-2 native re-forge).", dst.display());
         return 0;
     }
 
@@ -180,9 +187,9 @@ pub fn run_background_reforge(st: &mut ForgeState, args: &[String]) -> i32 {
             .unwrap_or(false);
         if ok {
             for b in *bins {
-                let musl_src = repo_dir.join("target/x86_64-unknown-linux-musl/release").join(b);
                 let gnu_src = repo_dir.join("target/release").join(b);
-                let src = if musl_src.is_file() { musl_src } else { gnu_src };
+                let musl_src = repo_dir.join("target/x86_64-unknown-linux-musl/release").join(b);
+                let src = if gnu_src.is_file() { gnu_src } else { musl_src };
                 if src.is_file() {
                     let tmp = bin_dir.join(format!(".{b}.reforge.tmp"));
                     let dst = bin_dir.join(b);
