@@ -38,7 +38,7 @@ pub fn run_tui() -> i32 {
 
     let mut sel = 0usize;
     let mut webapp_input: Option<String> = None;
-    let mut status_msg = format!("SuperForge v0.6.0 Ready (-march={}, {} threads, linker={})", st.hw.march_target, st.hw.cpu_jobs, st.hw.linker);
+    let mut status_msg = format!("SuperForge v0.7.0 Ready (-march={}, {} threads, linker={})", st.hw.march_target, st.hw.cpu_jobs, st.hw.linker);
     let busy = Arc::new(AtomicBool::new(false));
     let mut last_tick = Instant::now();
     let mut tick_count = 0u64;
