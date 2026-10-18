@@ -15,22 +15,32 @@ use std::io::{self, IsTerminal};
 use std::process;
 
 fn print_help() {
-    println!("SuperForge v0.5.1 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
+    println!("SuperForge v0.6.0 — Native Rust 2-Tier Binary Cache, Source Builder & WebApp Engine");
     println!("Usage:");
-    println!("  superforge                                  Launch TUI (or print status if non-TTY)");
+    println!("  superforge gui [tab]                        Launch standalone SuperForge GUI window");
     println!("  superforge tui                              Launch interactive 16-Bit Forge TUI");
     println!("  superforge status                           Show CPU/linker flags, stamps, presets & WebApps");
     println!("  superforge check-updates [--dry-run]        Compare local .stamp git SHAs vs remote HEAD");
     println!("  superforge fetch-bin <target> [--dry-run]   Tier-1 quick static musl binary fetch");
     println!("  superforge build --quick <target>           Fetch Tier-1 binary or fallback to source");
     println!("  superforge background-reforge [--dry-run]   Tier-2 AC-power -march=native background build");
-    println!("  superforge <preset|owner/repo>              Clone, tune (-march=native), build & install");
+    println!("  superforge <preset|owner/repo|recipe.toml>  Clone, tune (-march=native), build & install");
     println!("  superforge [webapp] <url> [name] [--isolated|--shared] Install chromeless Firefox WebApp");
     println!("  superforge remove <name|slug>               Uninstall a forged WebApp or binary");
     println!("  superforge update [--force] [--dry-run]     Update DNF RPMs, Flatpaks, Rustup, source builds & WebApps");
     println!("  superforge deps <target> [--install]        Check or install Fedora -devel dependencies");
     println!("  superforge profile                          Generate ~/.config/superfedora/hardware-flags.env");
     println!("  superforge all [--force]                    Compile core workstation suite for localhost CPU");
+}
+
+fn launch_gui(tab: &str) -> i32 {
+    let t = if tab.is_empty() { "all" } else { tab };
+    let ok = process::Command::new("qs")
+        .args(["ipc", "call", "forge", "open", t])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok { 0 } else { run_tui() }
 }
 
 fn main() {
@@ -50,8 +60,12 @@ fn main() {
                 return;
             }
             "-V" | "--version" | "version" => {
-                println!("superforge 0.5.1 (SuperFedora/superforge — Rust 1.99 Native Engine)");
+                println!("superforge 0.6.0 (SuperFedora/superforge — Rust 1.99 Native Engine)");
                 return;
+            }
+            "gui" | "--gui" => {
+                let tab = args.get(1).map(|s| s.as_str()).unwrap_or("all");
+                process::exit(launch_gui(tab));
             }
             "tui" => {
                 process::exit(run_tui());
@@ -103,7 +117,7 @@ fn main() {
         "all" => {
             let _ = write_hw_profile(&st);
             let force = args.iter().any(|a| a == "--force" || a == "-f");
-            for tgt in ["superfedora", "supertheme", "superforge", "supershell", "supernotify", "superagent", "wlctl", "bluetui", "wiremix", "fuzzel", "btop"] {
+            for tgt in ["superfedora", "supertheme", "superforge", "superbar", "supershell", "supernotify", "wlctl", "bluetui", "wiremix", "fuzzel", "btop"] {
                 let mut call_args = vec![tgt.to_string()];
                 if force {
                     call_args.push("--force".into());

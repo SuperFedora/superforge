@@ -13,7 +13,7 @@ superforge webapp <url>   # Install chromeless Firefox WebApp and pin to SuperDo
 superforge remove <slug>  # Uninstall a forged binary or Firefox WebApp
 ```
 
-* **Catalog:** `recipes.toml` and `packages/forge.txt` define native build targets (`superfedora`, `supertheme`, `superforge`, `supershell`, `superagent`, `hyprland`, `quickshell`, `idlescreen`, `btop`, `ripgrep`, `fastfetch`, `fuzzel`, `wiremix`, `wlctl`, `bluetui`, `openrgb`).
+* **Catalog:** `recipes.toml` and `packages/forge.txt` define native build targets (`superfedora`, `supertheme`, `superforge`, `superbar`, `supershell`, `supernotify`, `hyprland`, `quickshell`, `idlescreen`, `btop`, `ripgrep`, `fastfetch`, `fuzzel`, `wiremix`, `wlctl`, `bluetui`, `openrgb`).
 
 **Full documentation & architecture guide: [superfedora.github.io](https://superfedora.github.io/)**
 

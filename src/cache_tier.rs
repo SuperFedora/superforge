@@ -9,17 +9,8 @@ use crate::catalog::ForgeState;
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
-
-pub const CORE_REPOS: &[(&str, &[&str])] = &[
-    ("superfedora", &["superfedora"]),
-    ("superforge", &["superforge"]),
-    ("supertheme", &["supertheme"]),
-    ("supernotify", &["supernotify"]),
-    ("supershell", &["superbar", "superdock", "supersettings", "superlock"]),
-    ("superagent", &["superagent"]),
-];
 
 pub fn on_ac_power() -> bool {
     let Ok(entries) = fs::read_dir("/sys/class/power_supply") else { return true };
@@ -43,16 +34,14 @@ pub fn on_ac_power() -> bool {
 
 fn repo_for_target(target: &str) -> (&str, Vec<&str>) {
     match target {
-        "superfedora" | "sf" => ("superfedora", vec!["superfedora"]),
+        "superfedora" => ("superfedora", vec!["superfedora"]),
         "superforge" => ("superforge", vec!["superforge"]),
         "supertheme" => ("supertheme", vec!["supertheme"]),
         "supernotify" => ("supernotify", vec!["supernotify"]),
-        "supershell" => ("supershell", vec!["superbar", "superdock", "supersettings", "superlock"]),
-        "superbar" => ("supershell", vec!["superbar"]),
-        "superdock" => ("supershell", vec!["superdock"]),
+        "superbar" => ("superbar", vec!["superbar"]),
+        "supershell" => ("supershell", vec!["supersettings", "superlock"]),
         "supersettings" => ("supershell", vec!["supersettings"]),
         "superlock" => ("supershell", vec!["superlock"]),
-        "superagent" => ("superagent", vec!["superagent"]),
         other => (other, vec![other]),
     }
 }
@@ -108,7 +97,7 @@ pub fn run_fetch_bin(st: &mut ForgeState, args: &[String]) -> i32 {
             let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755));
             let _ = fs::rename(&tmp, &dst);
             if *bin_name == "superfedora" {
-                let _ = std::os::unix::fs::symlink("superfedora", bin_dir.join("sf"));
+                let _ = fs::remove_file(bin_dir.join("sf"));
             }
             println!("  [OK] Tier-1 prebuilt static musl binary installed: {}", dst.display());
         } else {
@@ -126,19 +115,21 @@ pub fn run_fetch_bin(st: &mut ForgeState, args: &[String]) -> i32 {
         return 0;
     }
 
-    println!("  [--] Prebuilt musl binary not yet on GitHub Releases; falling back to local compilation...");
-    exec_runner(st, &[target.to_string()])
+    println!("  [--] Checking Tier-1 system / release / binstall cache before local compilation...");
+    exec_runner(st, &["fetch-bin".to_string(), target.to_string()])
 }
 
 pub fn run_background_reforge(st: &mut ForgeState, args: &[String]) -> i32 {
     let mut dry = false;
     let mut force = false;
+    let mut is_async = false;
     for a in args {
         match a.as_str() {
             "--dry-run" | "-n" => dry = true,
             "--force" | "-f" => force = true,
+            "--async" | "--background" | "-b" => is_async = true,
             "-h" | "--help" | "help" => {
-                println!("Usage: superforge background-reforge [--dry-run] [--force]");
+                println!("Usage: superforge background-reforge [--dry-run] [--force] [--async]");
                 return 0;
             }
             _ => {}
@@ -157,52 +148,41 @@ pub fn run_background_reforge(st: &mut ForgeState, args: &[String]) -> i32 {
         return 0;
     }
 
+    let targets = [
+        "superfedora", "superforge", "supertheme", "superbar", "supershell", "supernotify",
+        "idlescreen", "wlctl", "bluetui", "wiremix", "fuzzel", "btop",
+    ];
+
     if dry {
         println!("  [DRY-RUN] 1. Hardware Profile : CFLAGS=\"-O3 -march=native -flto=thin\" RUSTFLAGS=\"-C opt-level=3 -C target-cpu=native\"");
-        println!("  [DRY-RUN] 2. Target Suite     : superfedora, superforge, supertheme, supernotify, supershell, superagent");
-        println!("  [DRY-RUN] 3. Atomic Swap      : ~/.local/bin/.<bin>.reforge.tmp -> ~/.local/bin/<bin>");
+        println!("  [DRY-RUN] 2. Target Suite     : {}", targets.join(", "));
+        println!("  [DRY-RUN] 3. Atomic Swap      : ~/.local/bin/.<bin>.tmp -> ~/.local/bin/<bin>");
         println!("  [DRY-RUN] 4. Cast Comms       : supernotify --cast builder \"BUILDER: Native Re-Forge Complete\"");
         return 0;
     }
 
     let _ = write_hw_profile(st);
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
-    let ws_root = st.forge_root.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(&home).join("Projects/superfedora"));
-    let bin_dir = PathBuf::from(&home).join(".local/bin");
-    let _ = fs::create_dir_all(&bin_dir);
-    let _ = fs::create_dir_all(st.state_dir.join("source-built"));
-
-    for (repo, bins) in CORE_REPOS {
-        let repo_dir = ws_root.join(repo);
-        if !repo_dir.join("Cargo.toml").is_file() {
-            continue;
-        }
-        println!("  [+] Re-forging {repo} (-C opt-level=3 -C target-cpu=native)...");
-        let ok = Command::new("cargo")
-            .current_dir(&repo_dir)
-            .env("RUSTFLAGS", "-C opt-level=3 -C target-cpu=native")
-            .args(["build", "--release", "-q"])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if ok {
-            for b in *bins {
-                let gnu_src = repo_dir.join("target/release").join(b);
-                let musl_src = repo_dir.join("target/x86_64-unknown-linux-musl/release").join(b);
-                let src = if gnu_src.is_file() { gnu_src } else { musl_src };
-                if src.is_file() {
-                    let tmp = bin_dir.join(format!(".{b}.reforge.tmp"));
-                    let dst = bin_dir.join(b);
-                    if fs::copy(&src, &tmp).is_ok() {
-                        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755));
-                        let _ = fs::rename(&tmp, &dst);
-                    }
-                }
-            }
-            let _ = fs::write(st.state_dir.join("source-built").join(format!("{repo}.tier")), "tier2-native\n");
-        }
+    let runner = st.forge_root.join("lib/forge-runner.sh");
+    let mut call_args: Vec<String> = targets.iter().map(|s| (*s).to_string()).collect();
+    if force {
+        call_args.push("--force".into());
     }
 
+    if is_async {
+        let _ = Command::new("nice")
+            .args(["-n", "19", "ionice", "-c", "3"])
+            .arg(&runner)
+            .env("FORGE_ROOT", &st.forge_root)
+            .args(&call_args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        println!("  [OK] Enqueued {} special -march={} builds in background (live progress in topbar).", targets.len(), st.hw.march_target);
+        return 0;
+    }
+
+    let code = exec_runner(st, &call_args);
     let _ = Command::new("supernotify")
         .args([
             "--cast",
@@ -215,5 +195,5 @@ pub fn run_background_reforge(st: &mut ForgeState, args: &[String]) -> i32 {
         .status();
     st.refresh();
     println!("  [OK] Tier-2 background -march=native re-forge complete (BUILDER Cast Comms notified).");
-    0
+    code
 }

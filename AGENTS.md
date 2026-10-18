@@ -31,17 +31,17 @@ A **page** is one committed shell script, QML component, or configuration file. 
 ## 2. Workstation Architecture & System Contracts
 
 - `[GATE:ci]` **100% Idempotency Invariant**:
-  Every installer module and CLI command must be safe to re-run indefinitely on a live machine. Running `sf install` 10 times consecutively must yield identical state, zero duplications, zero spurious errors, and exit code 0.
+  Every installer module and CLI command must be safe to re-run indefinitely on a live machine. Running `superfedora install` 10 times consecutively must yield identical state, zero duplications, zero spurious errors, and exit code 0.
 - `[GATE:ci]` **Detection Before Action**:
   Every module must query system state first (`has_pkg`, `has_copr`, `has_cmd`, `has_line`). If an item is already present, report `[OK]` and perform zero mutating operations.
-- `[POLICY]` **Dual CLI Ergonomics (`sf` and `superfedora`)**:
-  The orchestrator CLI must always provide `sf` as the primary, fast 2-letter command alongside `superfedora`. Both binaries/symlinks must be installed to `~/.local/bin/` by the web bootstrap installer.
+- `[POLICY]` **Canonical CLI Ergonomics (`superfedora`)**:
+  The orchestrator CLI must always provide `superfedora` as the single canonical command. The binary must be installed to `~/.local/bin/superfedora` by the web bootstrap installer.
 - `[POLICY]` **Zero-Symlink Dotfiles Invariant**:
   Managed user configurations in `~/.config/` are deployed as direct files, never fragile relative symlinks. Any pre-existing user configuration must be safely backed up with timestamps to `~/.config/superfedora/backups/`.
 - `[POLICY]` **Native systemd Citizenship**:
   Graphical desktop components bind to `hyprland-session.target`. Daemons run through `uwsm` or systemd user units, cleanly responding to `SIGTERM` with standardized exit codes (`0`, `69`, `78`).
 - `[POLICY]` **Btrfs Snapper Rollback Guarantee**:
-  Module `00-preflight` must capture an immutable Snapper baseline snapshot (#1) labeled `superfedora-preinstall-baseline` before any package or system file changes. Rollback is cleanly triggered via `sf rollback`.
+  Module `00-preflight` must capture an immutable Snapper baseline snapshot (#1) labeled `superfedora-preinstall-baseline` before any package or system file changes. Rollback is cleanly triggered via `superfedora rollback`.
 
 ---
 
@@ -75,7 +75,7 @@ Order matters. Each step must pass completely before releasing or publishing:
 Advisory tiered audit run before tagging releases, budgeted by token capacity:
 1. **`mcode`** (Abundant tokens): Full codebase scan for contract mismatches, idempotency leaks, and CI gates.
    `mcode exec --permission full "<prompt>"`
-2. **`vibe`** (Moderate tokens): Adversarial diff inspection for subtle regressions, safety leaks, and edge cases.
+2. **`vibe`** (Moderate tokens — default model `ml4` / Mistral Large 4, `thinking = "medium"`, prompt caching enabled): Adversarial diff inspection, heavy-lifting builds, and regression checks.
    `vibe -p "<prompt>" --trust --auto-approve`
 3. **`grok`** (Strict quota): High-value referee and final sanity check on critical release diffs.
    `grok -p "<prompt>" --always-approve`

@@ -2,11 +2,10 @@
 [[recipe]]
 name = "superfedora"
 binary = "superfedora"
-symlink_alias = "sf"
 build_system = "cargo"
 repo = "https://github.com/SuperFedora/superfedora.git"
 deps = ["gcc", "make"]
-description = "16-Bit Rust Workstation Engine & Orchestrator TUI (alias: sf)"
+description = "16-Bit Rust Workstation Engine & Orchestrator TUI"
 [[recipe]]
 name = "supertheme"
 binary = "supertheme"
@@ -22,12 +21,19 @@ repo = "https://github.com/SuperFedora/superforge.git"
 deps = ["gcc", "make"]
 description = "Hardware-Tuned Source Builder & Chromeless Firefox WebApp Engine"
 [[recipe]]
+name = "superbar"
+binary = "superbar"
+build_system = "cargo"
+repo = "https://github.com/SuperFedora/superbar.git"
+deps = ["gcc", "make"]
+description = "16-Bit Wayland Topbar & Status Controller"
+[[recipe]]
 name = "supershell"
-binary = "superdock"
+binary = "supersettings"
 build_system = "cargo"
 repo = "https://github.com/SuperFedora/supershell.git"
 deps = ["gcc", "make"]
-description = "16-Bit Desktop Shell Suite (superdock, superbar, supersettings, superlock)"
+description = "16-Bit Desktop Shell Suite (supersettings, superlock)"
 [[recipe]]
 name = "supernotify"
 binary = "supernotify"
@@ -35,13 +41,6 @@ build_system = "cargo"
 repo = "https://github.com/SuperFedora/supernotify.git"
 deps = ["gcc", "make"]
 description = "16-Bit Animated Cast Comms (10 Specialists), Stage Banners & Notification Engine"
-[[recipe]]
-name = "superagent"
-binary = "superagent"
-build_system = "cargo"
-repo = "https://github.com/SuperFedora/superagent.git"
-deps = ["gcc", "make"]
-description = "Autonomous Workstation Agent (OpenClaw, Ollama & Cast Comms Daemon)"
 [[recipe]]
 name = "ripgrep"
 binary = "rg"

@@ -2,65 +2,57 @@
 # Copyright 2026 SuperFedora Contributors
 # SPDX-License-Identifier: Apache-2.0
 # ==============================================================================
-# forge-runner.sh — SuperForge Hardware-Tuned Source Builder & WebApp Runner
+# forge.sh — Hardware-Tuned Source Builder & Firefox Chromeless WebApp Installer
 # ==============================================================================
 # Usage:
-#   superforge status                           Show CPU/linker flags, presets & WebApps
-#   superforge check-updates [--dry-run]        Compare local .stamp git SHAs vs remote HEAD
-#   superforge <preset|owner/repo>              Clone, tune (-march=native), build & install
-#   superforge [webapp] <url> [name] [--isolated|--shared] Install chromeless Firefox WebApp
-#   superforge remove <name|slug>               Uninstall a forged WebApp or binary
-#   superforge update [--force]                 Update DNF RPMs, Flatpaks, Rustup, source builds & WebApps
-#   superforge deps <target> [--install]        Check or install Fedora -devel dependencies
+#   superfedora forge status                  Show CPU/linker flags, presets & WebApps
+#   superfedora forge check-updates           Compare local .stamp git SHAs vs remote HEAD
+#   superfedora forge <preset|owner/repo>     Clone, tune (-march=native), build & install
+#   superfedora forge [webapp] <url> [name]   Install chromeless Firefox WebApp
+#   superfedora forge remove <name|slug>      Uninstall a forged WebApp or binary
+#   superfedora forge update [--force]        Update DNF RPMs, Flatpaks, Rustup, source builds & WebApps
+#   superfedora forge deps <target> [--install] Check or install Fedora -devel dependencies
 # ==============================================================================
 set -euo pipefail
 
-FORGE_ROOT="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/.." && pwd)"; SF_ROOT="${SF_ROOT:-$HOME/Projects/superfedora/superfedora}"
+SF_ROOT="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/.." && pwd)"
 STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/superfedora"; LEGACY_STAMP_DIR="$STATE_DIR/source-built"; STAMP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/superfedora/forge/stamps"
-FORGE_JSON="$STATE_DIR/forge.json"; LIVE_JSON="$STATE_DIR/forge-live.json"; BIN_DIR="$HOME/.local/bin"
+FORGE_JSON="$STATE_DIR/forge.json"; LIVE_JSON="$STATE_DIR/forge-live.json"; QUEUE_FILE="$STATE_DIR/forge-queue.txt"; DONE_FILE="$STATE_DIR/forge-done.txt"; LOCK_FILE="$STATE_DIR/forge.lock"; BIN_DIR="$HOME/.local/bin"
 WEBAPP_DIR="$HOME/.local/share/superfedora/webapps"; SYSROOT="$HOME/.local/sysroot/usr"
 TMP_BUILD="${XDG_CACHE_HOME:-$HOME/.cache}/superfedora/forge-build"; FORGE_LOG="$TMP_BUILD/forge.log"
 mkdir -p "$TMP_BUILD" "$STATE_DIR" "$STAMP_DIR" "$LEGACY_STAMP_DIR" "$BIN_DIR"; FORGE_ACTIVE_TARGET=""; CURRENT_TMP=""
-export TMPDIR="$TMP_BUILD" PATH="$BIN_DIR:$HOME/.cargo/bin:$SYSROOT/bin:$SYSROOT/lib/golang/bin:$SYSROOT/libexec/qt6:/usr/bin:/bin:$PATH"
-export LD_LIBRARY_PATH="$SYSROOT/lib64:${LD_LIBRARY_PATH:-}" LIBRARY_PATH="$SYSROOT/lib64:$HOME/.local/usr/lib64:$HOME/.local/lib:/usr/lib64" CPATH="$SYSROOT/include:$SYSROOT/include/ffmpeg:$HOME/.local/usr/include" PKG_CONFIG_PATH="$SYSROOT/lib64/pkgconfig:$SYSROOT/share/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig" CMAKE_PREFIX_PATH="$SYSROOT;/usr" LIBCLANG_PATH="$SYSROOT/lib64" BINDGEN_EXTRA_CLANG_ARGS="-I$SYSROOT/include -I$SYSROOT/include/ffmpeg" PYTHONPATH="$SYSROOT/lib/python3.14/site-packages:$SYSROOT/lib64/python3.14/site-packages:${PYTHONPATH:-}"
-
+export TMPDIR="$TMP_BUILD" PATH="$BIN_DIR:$HOME/.cargo/bin:$SYSROOT/bin:$SYSROOT/lib/golang/bin:$SYSROOT/libexec/qt6:/usr/local/bin:/usr/bin:/bin:$PATH"
+export LD_LIBRARY_PATH="$SYSROOT/lib64:${LD_LIBRARY_PATH:-}" LIBRARY_PATH="$SYSROOT/lib64:$HOME/.local/usr/lib64:$HOME/.local/lib:/usr/lib64" CPATH="$SYSROOT/include:$SYSROOT/include/ffmpeg:$HOME/.local/usr/include:/usr/include/ffmpeg" PKG_CONFIG_PATH="$SYSROOT/lib64/pkgconfig:$SYSROOT/share/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig" CMAKE_PREFIX_PATH="$SYSROOT;/usr" LIBCLANG_PATH="/usr/lib64" BINDGEN_EXTRA_CLANG_ARGS="-I$SYSROOT/include -I$SYSROOT/include/ffmpeg -I/usr/include/ffmpeg" PYTHONPATH="$SYSROOT/lib/python3.14/site-packages:$SYSROOT/lib64/python3.14/site-packages:${PYTHONPATH:-}"
 set_live() {
-    [[ "${DRY:-0}" -eq 1 ]] && { echo "$5"; return 0; }; [[ "$1" == "1" ]] && FORGE_ACTIVE_TARGET="$3" || FORGE_ACTIVE_TARGET=""
-    python3 -c 'import json,sys,time; p,a,st,t,pct,s=sys.argv[1:7]; json.dump({"active":a=="1","state":st,"target":t,"pct":int(pct),"step":s,"ts":int(time.time())},open(p,"w"))' "$LIVE_JSON" "$1" "$2" "$3" "$4" "$5" 2>/dev/null || true
+    [[ "${DRY:-0}" -eq 1 ]] && { echo "$5"; return 0; }; [[ "$1" == "1" ]] && FORGE_ACTIVE_TARGET="$3" || FORGE_ACTIVE_TARGET=""; [[ "$1" == "0" && "$2" == "ok" && -n "$3" ]] && printf '%s\n' "$3" >> "$DONE_FILE"
+    python3 -c 'import json,os,sys,time; p,qf,df,a,st,t,pct,s=sys.argv[1:9]; rd=lambda f:[l.strip().removeprefix("mock:") for l in open(f) if l.strip()] if os.path.exists(f) else []; json.dump({"active":a=="1","state":st,"target":t,"pct":int(pct),"step":s,"queue":rd(qf),"done":rd(df),"ts":int(time.time())},open(p,"w"))' "$LIVE_JSON" "$QUEUE_FILE" "$DONE_FILE" "$1" "$2" "$3" "$4" "$5" 2>/dev/null || true
     echo "$5" | tee -a "$FORGE_LOG"; command -v qs >/dev/null 2>&1 && { qs ipc call status reloadForge >/dev/null 2>&1 || qs ipc call status refresh >/dev/null 2>&1 || true; }
-    [[ "$1" == "0" && "$2" == "ok" && "${IN_UPDATE:-0}" -eq 0 && "$5" != *already* && "$5" != *Removed* ]] && { command -v supernotify >/dev/null 2>&1 && supernotify --banner update >/dev/null 2>&1 || true; } || true
+    [[ "$1" == "0" && "$2" == "ok" && "${IN_UPDATE:-0}" -eq 0 && "$5" != *already* && "$5" != *Removed* && -x "$SF_ROOT/lib/notify-ctl.sh" ]] && "$SF_ROOT/lib/notify-ctl.sh" --banner update >/dev/null 2>&1 || true
 }
+pipe_progress() { local name="$1" pct=42 last=0 now line short; while IFS= read -r line; do echo "$line" >> "$FORGE_LOG"; echo "$line"; now="$(date +%s)"; if (( now - last >= 1 )); then last="$now"; [[ "$line" =~ \[([0-9]+)/([0-9]+)\] ]] && pct=$(( 40 + (${BASH_REMATCH[1]} * 50) / (${BASH_REMATCH[2]} > 0 ? ${BASH_REMATCH[2]} : 1) )) || { (( pct < 90 )) && pct=$(( pct + 4 )); }; short="${line#"${line%%[![:space:]]*}"}"; set_live 1 running "$name" "$pct" "[3/4] ${short:0:64}" >/dev/null; fi; done; }
 trap '[[ -n "${CURRENT_TMP:-}" ]] && rm -rf "$CURRENT_TMP"; [[ -n "${FORGE_ACTIVE_TARGET:-}" ]] && set_live 0 error "$FORGE_ACTIVE_TARGET" 100 "[FAIL] Forge interrupted or failed (see forge.log)" || true' EXIT
-
 detect_hw() {
     CPU_ARCH="$(uname -m)"; CPU_MODEL="$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo 2>/dev/null || echo "$CPU_ARCH")"; CPU_JOBS="$(nproc 2>/dev/null || echo 4)"; MARCH_TARGET=""
     command -v rustc >/dev/null 2>&1 && MARCH_TARGET="$(rustc --print target-cpus 2>/dev/null | sed -n 's/.*currently \([^)]*\)).*/\1/p' | head -1)"
-    [[ -z "$MARCH_TARGET" && -x /usr/bin/gcc ]] && MARCH_TARGET="$(/usr/bin/gcc -march=native -Q --help=target 2>/dev/null | awk '/^\s*-march=/{print $2; exit}')"
-    MARCH_TARGET="${MARCH_TARGET:-native}"; LINKER="bfd"; LD_FLAG=""; RUST_LD=""
+    [[ -z "$MARCH_TARGET" && -x /usr/bin/gcc ]] && MARCH_TARGET="$(/usr/bin/gcc -march=native -Q --help=target 2>/dev/null | awk '/^\s*-march=/{print $2; exit}')"; MARCH_TARGET="${MARCH_TARGET:-native}"; LINKER="bfd"; LD_FLAG=""; RUST_LD=""
     ISA_FLAGS="$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null | grep -oE '\b(avx512f|avx2|avx|fma|bmi2|aes|vaes|sha_ni|sse4_2)\b' | sort -u | tr '\n' ' ' | sed 's/ $//' || echo "standard")"; [[ -n "$ISA_FLAGS" ]] || ISA_FLAGS="standard"
-    if command -v mold >/dev/null 2>&1; then LINKER="mold"; LD_FLAG="-fuse-ld=mold"; RUST_LD="-C link-arg=-fuse-ld=mold"
-    elif command -v ld.lld >/dev/null 2>&1; then LINKER="lld"; LD_FLAG="-fuse-ld=lld"; RUST_LD="-C link-arg=-fuse-ld=lld"; fi
-    GPU_INFO="$(lspci 2>/dev/null | awk -F': ' '/VGA|3D|Display/{print $2; exit}' || echo "Wayland/DRM")"
-    HOST_CFLAGS="-O3 -pipe -march=native -mtune=native -flto=auto -ffat-lto-objects -fno-plt"; HOST_CXXFLAGS="$HOST_CFLAGS"
-    HOST_LDFLAGS="-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now,-rpath,$SYSROOT/lib64 -flto=auto ${LD_FLAG}"
-    HOST_RUSTFLAGS="-C opt-level=3 -C target-cpu=native -C codegen-units=1 -C strip=symbols ${RUST_LD}"
+    if command -v mold >/dev/null 2>&1; then LINKER="mold"; LD_FLAG="-fuse-ld=mold"; RUST_LD="-C link-arg=-fuse-ld=mold"; elif command -v ld.lld >/dev/null 2>&1; then LINKER="lld"; LD_FLAG="-fuse-ld=lld"; RUST_LD="-C link-arg=-fuse-ld=lld"; fi
+    GPU_INFO="$(lspci 2>/dev/null | awk -F': ' '/VGA|3D|Display/{print $2; exit}' || echo "Wayland/DRM")"; HOST_CFLAGS="-O3 -pipe -march=native -mtune=native -flto=auto -ffat-lto-objects -fno-plt"; HOST_CXXFLAGS="$HOST_CFLAGS"
+    HOST_LDFLAGS="-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now,-rpath,$SYSROOT/lib64 -flto=auto ${LD_FLAG}"; HOST_RUSTFLAGS="-C opt-level=3 -C target-cpu=native -C codegen-units=1 -C strip=symbols ${RUST_LD}"
 }
-
 ensure_pkgs() {
-    local -a missing=(); local p l f
-    for p in "$@"; do [[ "$p" == "ffmpeg-free-devel" ]] && rpm -q --quiet ffmpeg-libs 2>/dev/null && p="ffmpeg-devel"; [[ "$p" =~ ^(gcc|gcc-c\+\+|make|cmake|ninja-build)$ ]] && command -v "${p%-build}" >/dev/null 2>&1 && continue; rpm -q --quiet "$p" 2>/dev/null || [[ -f "$HOME/.local/pkg_cache/.ok-$p" ]] || missing+=("$p"); done
-    [[ ${#missing[@]} -eq 0 ]] && return 0
-    if [[ $EUID -eq 0 ]]; then dnf install -y "${missing[@]}"; elif [[ "${INSTALL_DEPS:-0}" -eq 1 ]]; then sudo dnf install -y "${missing[@]}"
+    local -a missing=(); local p l f; for p in "$@"; do [[ "$p" == "ffmpeg-free-devel" ]] && rpm -q --quiet ffmpeg-libs 2>/dev/null && p="ffmpeg-devel"; [[ "$p" =~ ^(gcc|gcc-c\+\+|make|cmake|ninja-build)$ ]] && command -v "${p%-build}" >/dev/null 2>&1 && continue; rpm -q --quiet "$p" 2>/dev/null || [[ -f "$HOME/.local/pkg_cache/.ok-$p" ]] || missing+=("$p"); done; [[ ${#missing[@]} -eq 0 ]] && return 0
+    if [[ $EUID -eq 0 ]]; then dnf install -y "${missing[@]}"; elif [[ "${INSTALL_DEPS:-0}" -eq 1 ]] || sudo -n true 2>/dev/null; then sudo dnf install -y "${missing[@]}"
     else
-        echo "[+] Staging build headers into user sysroot: ${missing[*]}" | tee -a "$FORGE_LOG"; mkdir -p "$HOME/.local/pkg_cache" "$SYSROOT/lib64" "$SYSROOT/bin" "$SYSROOT/libexec/qt6"
+        echo "[+] Staging build headers into user sysroot: ${missing[*]}" | tee -a "$FORGE_LOG"; mkdir -p "$HOME/.local/pkg_cache" "$SYSROOT/lib64" "$SYSROOT/bin" "$SYSROOT/libexec/qt6"; export LIBCLANG_PATH="$SYSROOT/lib64"
         dnf download --resolve --arch="$(uname -m)" --arch=noarch --destdir="$HOME/.local/pkg_cache" "${missing[@]}" >/dev/null 2>&1 || dnf download --arch="$(uname -m)" --arch=noarch --destdir="$HOME/.local/pkg_cache" "${missing[@]}" >/dev/null 2>&1 || true
         for p in "$HOME/.local/pkg_cache"/*.rpm; do [[ -f "$p" && ! -f "$HOME/.local/pkg_cache/.extracted-$(basename "$p")" ]] && (cd "$HOME/.local/sysroot" && rpm2cpio "$p" 2>/dev/null | cpio -idmu --quiet 2>/dev/null || true) && touch "$HOME/.local/pkg_cache/.extracted-$(basename "$p")"; done
-        for f in /usr/lib64/lib*.so*; do [[ -e "$SYSROOT/lib64/${f##*/}" ]] || ln -s "$f" "$SYSROOT/lib64/${f##*/}" 2>/dev/null || true; done
+        for f in /usr/lib64/lib*.so* /usr/lib64/*.a /usr/lib64/*.o; do [[ -e "$SYSROOT/lib64/${f##*/}" ]] || ln -s "$f" "$SYSROOT/lib64/${f##*/}" 2>/dev/null || true; done
         for f in /usr/libexec/qt6/*; do [[ -e "$SYSROOT/libexec/qt6/${f##*/}" ]] || ln -s "$f" "$SYSROOT/libexec/qt6/${f##*/}" 2>/dev/null || true; done
         mkdir -p "$SYSROOT/lib64/qt6" && cp -rs /usr/lib64/qt6/* "$SYSROOT/lib64/qt6/" 2>/dev/null || true
         for f in /usr/bin/*; do [[ -e "$SYSROOT/bin/${f##*/}" ]] || ln -s "$f" "$SYSROOT/bin/${f##*/}" 2>/dev/null || true; done
         for l in "$SYSROOT/lib64"/lib*.so*; do [[ -L "$l" && ! -e "$l" && -e "/usr/lib64/$(readlink "$l")" ]] && ln -sf "/usr/lib64/$(readlink "$l")" "$l" || true; done
-        sed -i "s|$HOME/.local/sysroot||g; s|/usr/lib64/libc_nonshared.a|$SYSROOT/lib64/libc_nonshared.a|g; s|/usr/lib64/libmvec_nonshared.a|$SYSROOT/lib64/libmvec_nonshared.a|g" "$SYSROOT/lib64/libc.so" "$SYSROOT/lib64/libm.so" 2>/dev/null || true
+        [[ -f "$SYSROOT/lib64/libc_nonshared.a" && ! -L "$SYSROOT/lib64/libc.so" ]] && sed -i "s|$HOME/.local/sysroot||g; s|/usr/lib64/libc_nonshared.a|$SYSROOT/lib64/libc_nonshared.a|g; s|/usr/lib64/libmvec_nonshared.a|$SYSROOT/lib64/libmvec_nonshared.a|g" "$SYSROOT/lib64/libc.so" "$SYSROOT/lib64/libm.so" 2>/dev/null || true
         sed -i "s|$HOME/.local/sysroot||g; s|^prefix=/usr$|prefix=$SYSROOT|g; s|/usr/include|$SYSROOT/include|g; s|/usr/lib64|$SYSROOT/lib64|g" "$SYSROOT"/lib64/pkgconfig/*.pc "$SYSROOT"/share/pkgconfig/*.pc 2>/dev/null || true
         find "$SYSROOT/lib64/cmake" -name "*.cmake" -exec sed -i "s|$HOME/.local/sysroot||g; s|/usr/include|$SYSROOT/include|g; s|/usr/lib64/qt6|$SYSROOT/lib64/qt6|g; s|/usr/libexec/qt6|$SYSROOT/libexec/qt6|g" {} + 2>/dev/null || true
         sed -i -E 's/(__builtin_)*isnormal\(val\)/__builtin_isnormal(val)/g; s/(__builtin_)*isinf\(val\)/__builtin_isinf(val)/g; s/(__builtin_)*signbit\(val\)/__builtin_signbit(val)/g' "$SYSROOT/include/spa-0.2/spa/utils/json-core.h" 2>/dev/null || true
@@ -68,54 +60,39 @@ ensure_pkgs() {
         for p in "${missing[@]}"; do compgen -G "$HOME/.local/pkg_cache/${p}-[0-9]*.rpm" >/dev/null && touch "$HOME/.local/pkg_cache/.ok-$p" || true; done
     fi
 }
-
 preset_deps() {
     case "$1" in
-        superfedora|supertheme|superforge|supershell|supernotify|superagent|tuigreet|ripgrep|rg|fd|zoxide|yazi|dua-cli|csvlens|fend) echo "gcc make" ;;
-        ouch) echo "gcc make pkgconf-pkg-config bzip2-devel xz-devel libzstd-devel" ;; typst) echo "gcc make pkgconf-pkg-config openssl-devel" ;; helix|btop) echo "gcc gcc-c++ make" ;;
-        oculante) echo "gcc cmake make pkgconf-pkg-config gtk3-devel libX11-devel libxcb-devel" ;; satty) echo "gcc make pkgconf-pkg-config gtk4-devel libadwaita-devel libepoxy-devel fontconfig-devel" ;;
-        wl-screenrec) echo "gcc clang clang-devel make pkgconf-pkg-config ffmpeg-free-devel libdrm-devel wayland-devel" ;; termusic) echo "gcc clang clang-devel make pkgconf-pkg-config alsa-lib-devel dbus-devel protobuf-compiler gstreamer1-devel gstreamer1-plugins-base-devel" ;;
-        imv) echo "gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel libxkbcommon-devel pango-devel cairo-devel librsvg2-devel libjpeg-turbo-devel libpng-devel libwebp-devel inih-devel libicu-devel imv" ;;
-        hyprpicker) echo "gcc-c++ cmake ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel cairo-devel pango-devel libxkbcommon-devel libjpeg-turbo-devel hyprutils-devel hyprwayland-scanner-devel hyprpicker" ;;
-        zathura) echo "gcc meson ninja-build pkgconf-pkg-config gtk3-devel glib2-devel cairo-devel sqlite-devel girara-devel json-glib-devel libseccomp-devel zathura zathura-pdf-mupdf" ;;
-        cava) echo "gcc cmake ninja-build pkgconf-pkg-config fftw-devel alsa-lib-devel pipewire-devel iniparser-devel ncurses-devel cava" ;; cliphist) echo "golang cliphist" ;; bazarr) echo "python3 python3-pip gcc libxml2-devel libxslt-devel" ;;
-        mpv) echo "gcc meson ninja-build pkgconf-pkg-config ffmpeg-free-devel libplacebo-devel libass-devel wayland-devel wayland-protocols-devel libxkbcommon-devel libva-devel libdrm-devel mesa-libEGL-devel pipewire-devel luajit-devel mpv" ;;
-        idlescreen) echo "gcc make pkgconf-pkg-config wayland-devel libxkbcommon-devel dbus-devel" ;; fastfetch) echo "gcc gcc-c++ cmake ninja-build pkgconf-pkg-config pciutils-devel wayland-devel libdrm-devel glib2-devel" ;;
-        wlctl|bluetui) echo "gcc make pkgconf-pkg-config dbus-devel" ;; wiremix) echo "gcc clang clang-devel make pkgconf-pkg-config pipewire-devel alsa-lib-devel" ;;
-        fuzzel) echo "gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel libxkbcommon-devel pixman-devel cairo-devel pango-devel fcft-devel tllist-devel fontconfig-devel libpng-devel librsvg2-devel scdoc" ;;
-        openrgb) echo "gcc-c++ make pkgconf-pkg-config qt6-qtbase-devel qt6-linguist hidapi-devel libusb1-devel mbedtls-devel" ;;
+        superfedora|superbar|supersettings|supertheme|superforge|supershell|supernotify|tuigreet|ripgrep|rg|fd|zoxide|yazi|dua-cli|csvlens|fend) echo "gcc make" ;; ouch) echo "gcc make pkgconf-pkg-config bzip2-devel xz-devel libzstd-devel" ;;
+        typst) echo "gcc make pkgconf-pkg-config openssl-devel" ;; helix|btop) echo "gcc gcc-c++ make" ;; cliphist) echo "golang cliphist" ;; bazarr) echo "python3 python3-pip gcc libxml2-devel libxslt-devel" ;;
+        oculante) echo "gcc gcc-c++ cmake make nasm pkgconf-pkg-config gtk3-devel libX11-devel libxcb-devel fontconfig-devel freetype-devel" ;; satty) echo "gcc make pkgconf-pkg-config gtk4-devel libadwaita-devel libepoxy-devel fontconfig-devel" ;;
+        wl-screenrec) echo "gcc clang clang-devel make pkgconf-pkg-config ffmpeg-free-devel libdrm-devel libva-devel vulkan-headers wayland-devel" ;; termusic) echo "gcc clang clang-devel make pkgconf-pkg-config alsa-lib-devel dbus-devel protobuf-compiler gstreamer1-devel gstreamer1-plugins-base-devel" ;;
+        imv) echo "gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel libxkbcommon-devel pango-devel cairo-devel librsvg2-devel libjpeg-turbo-devel libpng-devel libwebp-devel inih-devel libicu-devel imv" ;; hyprpicker) echo "gcc-c++ cmake ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel cairo-devel pango-devel libxkbcommon-devel libjpeg-turbo-devel hyprutils-devel hyprwayland-scanner-devel hyprpicker" ;;
+        zathura) echo "gcc meson ninja-build pkgconf-pkg-config gtk3-devel glib2-devel cairo-devel sqlite-devel girara-devel json-glib-devel libseccomp-devel zathura zathura-pdf-mupdf" ;; cava) echo "gcc cmake ninja-build pkgconf-pkg-config fftw-devel alsa-lib-devel pipewire-devel iniparser-devel ncurses-devel cava" ;;
+        mpv) echo "gcc meson ninja-build pkgconf-pkg-config ffmpeg-free-devel libplacebo-devel libass-devel wayland-devel wayland-protocols-devel libxkbcommon-devel libva-devel libdrm-devel mesa-libEGL-devel pipewire-devel luajit-devel mpv" ;; idlescreen) echo "gcc make pkgconf-pkg-config wayland-devel libxkbcommon-devel dbus-devel" ;;
+        fastfetch) echo "gcc gcc-c++ cmake ninja-build pkgconf-pkg-config pciutils-devel wayland-devel libdrm-devel glib2-devel" ;; wlctl|bluetui) echo "gcc make pkgconf-pkg-config dbus-devel" ;; wiremix) echo "gcc clang clang-devel make pkgconf-pkg-config pipewire-devel alsa-lib-devel" ;;
+        fuzzel) echo "gcc meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel libxkbcommon-devel pixman-devel cairo-devel pango-devel fcft-devel tllist-devel fontconfig-devel libpng-devel librsvg2-devel scdoc" ;; openrgb) echo "gcc-c++ make pkgconf-pkg-config qt6-qtbase-devel qt6-linguist hidapi-devel libusb1-devel mbedtls-devel" ;;
         hyprland) echo "gcc-c++ cmake meson ninja-build pkgconf-pkg-config wayland-devel wayland-protocols-devel cairo-devel pango-devel pixman-devel libdrm-devel mesa-libEGL-devel mesa-libGLES-devel mesa-libgbm-devel libinput-devel libxkbcommon-devel libuuid-devel tomlplusplus-devel hyprlang-devel hyprcursor-devel hyprutils-devel hyprwayland-scanner-devel aquamarine-devel hyprgraphics-devel hyprwire-devel glaze-devel re2-devel muParser-devel libdisplay-info-devel libliftoff-devel libseat-devel hwdata-devel xcb-util-devel xcb-util-wm-devel xcb-util-errors-devel xcb-util-renderutil-devel xcb-util-keysyms-devel xcb-util-image-devel xorg-x11-server-Xwayland-devel libXcursor-devel systemd-devel lua-devel readline-devel" ;;
-        quickshell) echo "gcc-c++ cmake ninja-build pkgconf-pkg-config spirv-tools qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel qt6-qtwayland-devel qt6-qtsvg-devel qt6-qtshadertools-devel wayland-devel wayland-protocols-devel libdrm-devel mesa-libgbm-devel pipewire-devel pam-devel cli11-devel jemalloc-devel polkit-devel glib2-devel breakpad-devel" ;;
-        *) echo "gcc gcc-c++ make cmake" ;;
+        quickshell) echo "gcc-c++ cmake ninja-build pkgconf-pkg-config spirv-tools qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel qt6-qtwayland-devel qt6-qtsvg-devel qt6-qtshadertools-devel wayland-devel wayland-protocols-devel libdrm-devel mesa-libgbm-devel pipewire-devel pam-devel cli11-devel jemalloc-devel polkit-devel glib2-devel breakpad-devel" ;; *) echo "gcc gcc-c++ make cmake" ;;
     esac
 }
 record_forge() {
-    local name="$1" repo="$2" bin="$3" sys="$4" sha="${5:-}" ver ts; mkdir -p "$STATE_DIR" "$STAMP_DIR" "$LEGACY_STAMP_DIR"
-    [[ -z "$sha" && -n "$repo" ]] && sha="$(timeout 5 git ls-remote "$repo" HEAD 2>/dev/null | awk '{print $1; exit}' || echo "HEAD")"
-    ts="$(date -u +%FT%TZ)"; ver="$("$BIN_DIR/$bin" --version 2>/dev/null | head -1 || echo "native-$MARCH_TARGET")"
+    local name="$1" repo="$2" bin="$3" sys="$4" sha="${5:-}" ver ts; mkdir -p "$STATE_DIR" "$STAMP_DIR" "$LEGACY_STAMP_DIR"; [[ -z "$sha" && -n "$repo" ]] && sha="$(timeout 5 git ls-remote "$repo" HEAD 2>/dev/null | awk '{print $1; exit}' || echo "HEAD")"; ts="$(date -u +%FT%TZ)"; ver="$("$BIN_DIR/$bin" --version 2>/dev/null | head -1 || echo "native-$MARCH_TARGET")"
     printf 'component=%s\nrepo=%s\nsha=%s\ncommit=%s\nbinary=%s\narch=%s\nflags=%s | %s\ntimestamp=%s\nbuilt_at=%s\ncflags=%s\nrustflags=%s\n' "$name" "$repo" "$sha" "$sha" "$BIN_DIR/$bin" "$MARCH_TARGET" "$HOST_CFLAGS" "$HOST_RUSTFLAGS" "$ts" "$ts" "$HOST_CFLAGS" "$HOST_RUSTFLAGS" | tee "$STAMP_DIR/$name.stamp" > "$LEGACY_STAMP_DIR/$name.stamp"
     python3 -c 'import json,os,re,sys; p,name,repo,bpath,bsys,arch,lnk,ver,sha,fl,ts=sys.argv[1:12]; ver=re.sub(r"\x1b\[[0-9;]*m","",ver).strip(); d=json.load(open(p)) if os.path.exists(p) else {}; d.setdefault("targets",{})[name]={"type":"source","repo":repo,"binary":bpath,"build_system":bsys,"march":arch,"linker":lnk,"version":ver,"sha":sha,"commit":sha,"flags":fl,"timestamp":ts,"built_at":ts}; json.dump(d,open(p,"w"),indent=2)' "$FORGE_JSON" "$name" "$repo" "$BIN_DIR/$bin" "$sys" "$MARCH_TARGET" "$LINKER" "$ver" "$sha" "$HOST_CFLAGS | $HOST_RUSTFLAGS" "$ts"
 }
 install_bin() {
-    local src="$1" dst_name="${2:-$(basename "$1")}"; [[ -n "$src" && -x "$src" ]] || { echo "[FAIL] Missing built binary for $dst_name" | tee -a "$FORGE_LOG"; return 1; }; mkdir -p "$BIN_DIR"
-    install -m 755 "$src" "$BIN_DIR/.${dst_name}.tmp.$$" && mv -f "$BIN_DIR/.${dst_name}.tmp.$$" "$BIN_DIR/$dst_name"
-    [[ "$dst_name" == "superfedora" ]] && { [[ -d "$SF_ROOT/bin" ]] && { install -m 755 "$src" "$SF_ROOT/bin/.sf.tmp.$$" && mv -f "$SF_ROOT/bin/.sf.tmp.$$" "$SF_ROOT/bin/superfedora"; }; ln -sf superfedora "$BIN_DIR/sf"; [[ -w /usr/local/bin && "${SUPERFEDORA_SYSTEM_WIDE:-0}" == "1" ]] && { install -m 755 "$src" /usr/local/bin/superfedora; ln -sf superfedora /usr/local/bin/sf; } || true; }
-    echo "[OK] Installed $BIN_DIR/$dst_name (-march=$MARCH_TARGET, linker=$LINKER)" | tee -a "$FORGE_LOG"
+    local src="$1" dst_name="${2:-$(basename "$1")}"; [[ -n "$src" && -x "$src" ]] || { echo "[FAIL] Missing built binary for $dst_name" | tee -a "$FORGE_LOG"; return 1; }; mkdir -p "$BIN_DIR"; install -m 755 "$src" "$BIN_DIR/.${dst_name}.tmp.$$" && mv -f "$BIN_DIR/.${dst_name}.tmp.$$" "$BIN_DIR/$dst_name"
+    [[ "$dst_name" == "superfedora" ]] && { install -m 755 "$src" "$SF_ROOT/bin/.sf.tmp.$$" && mv -f "$SF_ROOT/bin/.sf.tmp.$$" "$SF_ROOT/bin/superfedora"; rm -f "$BIN_DIR/sf" "$SF_ROOT/bin/sf" 2>/dev/null || true; [[ -w /usr/local/bin && "${SUPERFEDORA_SYSTEM_WIDE:-0}" == "1" ]] && { install -m 755 "$src" /usr/local/bin/superfedora; rm -f /usr/local/bin/sf 2>/dev/null || true; } || true; }; echo "[OK] Installed $BIN_DIR/$dst_name (-march=$MARCH_TARGET, linker=$LINKER)" | tee -a "$FORGE_LOG"
 }
 forge_webapp() {
-    local raw_url="$1" custom_name="${2:-}" prof_mode="${3:-shared}" dry="${4:-0}" res app_id title
-    [[ "$raw_url" == *"|"* && -z "$custom_name" ]] && { custom_name="${raw_url#*|}" && raw_url="${raw_url%%|*}"; }; [[ "$raw_url" =~ ^https?:// ]] || raw_url="https://$raw_url"
-    [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] Would forge Firefox WebApp for %s (profile=%s)\n' "$raw_url" "$prof_mode"; return 0; }
-    [[ "${IN_UPDATE:-0}" -eq 0 ]] && : > "$FORGE_LOG"; set_live 1 running "${custom_name:-$raw_url}" 20 "[1/4] Probing webpage metadata & high-res icon for $raw_url..."
-    res="$(python3 "$FORGE_ROOT/scripts/forge-webapp.py" "$raw_url" "$custom_name" "$prof_mode" "$WEBAPP_DIR" "$BIN_DIR" "$FORGE_JSON" "$LIVE_JSON")"; IFS='|' read -r app_id title <<< "$res"
-    set_live 1 running "$title" 92 "[4/4] Registering desktop entry & pinning to SuperDock..."
-    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
-    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
-    [[ "${NO_PIN:-0}" -eq 0 ]] && { command -v superdock >/dev/null 2>&1 && superdock pin "$app_id" >/dev/null 2>&1 || true; }; set_live 0 ok "$title" 100 "[OK] Installed WebApp '$title' ($prof_mode Firefox profile)"
-    [[ "${IN_UPDATE:-0}" -eq 0 ]] && { command -v supertheme >/dev/null 2>&1 && supertheme sfx play confirm >/dev/null 2>&1 || true; command -v notify-send >/dev/null 2>&1 && notify-send -a "SF FORGE" "WebApp Ready: $title" "Installed chromeless Firefox WebApp ($prof_mode profile) and pinned to SuperDock." || true; } || true
+    local raw_url="$1" custom_name="${2:-}" prof_mode="${3:-shared}" dry="${4:-0}" res app_id title; [[ "$raw_url" == *"|"* && -z "$custom_name" ]] && { custom_name="${raw_url#*|}" && raw_url="${raw_url%%|*}"; }; [[ "$raw_url" =~ ^https?:// ]] || raw_url="https://$raw_url"; [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] Would forge Firefox WebApp for %s (profile=%s)\n' "$raw_url" "$prof_mode"; return 0; }
+    [[ "${IN_UPDATE:-0}" -eq 0 ]] && : > "$FORGE_LOG"; set_live 1 running "${custom_name:-$raw_url}" 20 "[1/4] Probing webpage metadata & high-res icon for $raw_url..."; res="$(python3 "$SF_ROOT/scripts/forge-webapp.py" "$raw_url" "$custom_name" "$prof_mode" "$WEBAPP_DIR" "$BIN_DIR" "$FORGE_JSON" "$LIVE_JSON")"; IFS='|' read -r app_id title <<< "$res"; set_live 1 running "$title" 92 "[4/4] Registering desktop entry & pinning to SuperDock..."
+    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true; command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true; [[ "${NO_PIN:-0}" -eq 0 && -x "$SF_ROOT/lib/panel-ctl.sh" ]] && "$SF_ROOT/lib/panel-ctl.sh" pin "$app_id" >/dev/null 2>&1 || true; set_live 0 ok "$title" 100 "[OK] Installed WebApp '$title' ($prof_mode Firefox profile)"
+    [[ "${IN_UPDATE:-0}" -eq 0 ]] && { [[ -x "$SF_ROOT/lib/sfx.sh" ]] && "$SF_ROOT/lib/sfx.sh" play confirm >/dev/null 2>&1 || true; command -v notify-send >/dev/null 2>&1 && notify-send -a "SF FORGE" "WebApp Ready: $title" "Installed chromeless Firefox WebApp ($prof_mode profile) and pinned to SuperDock." || true; } || true
 }
 forge_generic_dir() {
-    local dir="$1" name="$2" repo="$3" bin_hint="${4:-$2}" extra_cargo="${5:-}" cc_bin="gcc" cxx_bin="g++" found="" sha
+    local dir="$1" name="$2" repo="$3" bin_hint="${4:-$2}" extra_cargo="${5:-}" cc_bin="gcc" cxx_bin="g++" found="" sha r_info r_bin r_deps r_cargo df
+    for df in "$dir/superforge.toml" "$dir/.superforge.toml" "$dir/recipe.toml"; do [[ -f "$df" ]] && { r_info="$(python3 -c 'import sys,tomllib; d=tomllib.load(open(sys.argv[1],"rb")); p=next(iter(d.values())) if len(d)==1 and isinstance(next(iter(d.values())),dict) else d; print(f"{p.get(\"bin\",\"\")}|{p.get(\"deps\",\"\")}|{p.get(\"cargo_args\",\"\")}")' "$df" 2>/dev/null || true)"; IFS='|' read -r r_bin r_deps r_cargo <<< "$r_info"; [[ -n "$r_bin" ]] && bin_hint="$r_bin"; [[ -n "$r_cargo" ]] && extra_cargo="$r_cargo"; [[ -n "$r_deps" ]] && ensure_pkgs $r_deps; break; }; done
     sha="$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)"; [[ -x "$BIN_DIR/gcc" ]] && cc_bin="$BIN_DIR/gcc" || { [[ -x /usr/bin/gcc ]] && cc_bin="/usr/bin/gcc"; }
     [[ -x "$BIN_DIR/g++" ]] && cxx_bin="$BIN_DIR/g++" || { [[ -x /usr/bin/g++ ]] && cxx_bin="/usr/bin/g++"; }; set_live 1 running "$name" 65 "[3/4] Compiling $name (-O3 -march=$MARCH_TARGET, $CPU_JOBS threads)..."
     if [[ -f "$dir/bazarr.py" ]]; then
@@ -124,87 +101,105 @@ forge_generic_dir() {
     elif [[ -f "$dir/Cargo.toml" ]]; then
         command -v cargo >/dev/null 2>&1 || curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path
         local rtarget="${CPU_ARCH}-unknown-linux-gnu"; # shellcheck disable=SC2086
-        (cd "$dir" && CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" RUSTFLAGS="$HOST_RUSTFLAGS" CARGO_BUILD_JOBS="$CPU_JOBS" cargo build --release --target "$rtarget" $extra_cargo 2>&1 | tee -a "$FORGE_LOG") || true
+        (cd "$dir" && CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" RUSTFLAGS="$HOST_RUSTFLAGS" CARGO_BUILD_JOBS="$CPU_JOBS" cargo build --release --target "$rtarget" $extra_cargo 2>&1 | pipe_progress "$name") || true
         found="$dir/target/$rtarget/release/$bin_hint"; [[ -x "$found" ]] || found="$dir/target/release/$bin_hint"
         [[ -x "$found" ]] || found="$(find "$dir/target/$rtarget/release" "$dir/target/release" -maxdepth 1 -type f -executable ! -name '*.so' ! -name '*.d' 2>/dev/null | head -1 || true)"
         [[ -x "$found" ]] || { command -v cargo-binstall >/dev/null 2>&1 && cargo-binstall -y --force --install-path "$BIN_DIR" "$name" >/dev/null 2>&1 && found="$BIN_DIR/$bin_hint" || true; }
         [[ -x "$found" ]] || { [[ -x "$SYSROOT/bin/$bin_hint" ]] && found="$SYSROOT/bin/$bin_hint"; }
         [[ "$found" != "$BIN_DIR/$bin_hint" ]] && install_bin "$found" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "cargo" "$sha"
         [[ "$name" == "idlescreen" && -x "${found%/*}/idlescreen-extras" ]] && install_bin "${found%/*}/idlescreen-extras" "idlescreen-extras"
-        if [[ "$name" == "supershell" ]]; then for sb in superdock superbar supersettings supernotify superlock; do [[ -x "${found%/*}/$sb" ]] && install_bin "${found%/*}/$sb" "$sb"; done; fi
+        if [[ "$name" == "supershell" ]]; then for sb in supersettings superlock; do [[ -x "${found%/*}/$sb" ]] && install_bin "${found%/*}/$sb" "$sb"; done; elif [[ "$name" == "superbar" && -d "$dir/qml" ]]; then mkdir -p "$HOME/.config/quickshell/panels" && cp -f "$dir"/qml/*.qml "$HOME/.config/quickshell/" && cp -f "$dir"/qml/panels/*.qml "$HOME/.config/quickshell/panels/" 2>/dev/null || true; elif [[ "$name" == "superforge" && -d "$dir/lib" ]]; then mkdir -p "$HOME/.local/share/superforge" && cp -rf "$dir/lib" "$dir/scripts" "$HOME/.local/share/superforge/" 2>/dev/null || true; fi
     elif [[ -f "$dir/CMakeLists.txt" ]]; then
         local gen="-G Unix Makefiles" extra_cmake="-DBUILD_TESTING=OFF -DCMAKE_PREFIX_PATH=$SYSROOT;/usr"; command -v ninja >/dev/null 2>&1 && gen="-G Ninja"
         [[ "$name" == "quickshell" ]] && extra_cmake="$extra_cmake -DCRASH_HANDLER=OFF -DCRASH_REPORTER=OFF -DDISTRIBUTOR=SuperFedora"; [[ "$name" == "hyprland" ]] && extra_cmake="$extra_cmake -DNO_TESTS=ON -DNO_HYPRPM=OFF"; local c_lto="-ffat-lto-objects"; [[ "$name" == "cava" ]] && c_lto="-fno-lto"
         # shellcheck disable=SC2086
-        (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS $c_lto" CXXFLAGS="$HOST_CXXFLAGS $c_lto" LDFLAGS="$HOST_LDFLAGS -L$SYSROOT/lib64 $c_lto" cmake -B "$dir/build" -S "$dir" $gen -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -Wno-dev $extra_cmake 2>&1 | tee -a "$FORGE_LOG" && cmake --build "$dir/build" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG") || true
+        (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS $c_lto" CXXFLAGS="$HOST_CXXFLAGS $c_lto" LDFLAGS="$HOST_LDFLAGS -L$SYSROOT/lib64 $c_lto" cmake -B "$dir/build" -S "$dir" $gen -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -Wno-dev $extra_cmake 2>&1 | tee -a "$FORGE_LOG" && cmake --build "$dir/build" -j "$CPU_JOBS" 2>&1 | pipe_progress "$name") || true
         found="$(find "$dir/build" -type f -executable -name "$bin_hint" 2>/dev/null | head -1 || true)"; [[ -n "$found" ]] || found="$(find "$dir/build" -maxdepth 3 -type f -executable ! -name '*.so*' ! -name 'CMake*' 2>/dev/null | head -1 || true)"
         [[ -x "${found:-}" ]] || { [[ -x "$SYSROOT/bin/$bin_hint" ]] && found="$SYSROOT/bin/$bin_hint" || found="$(command -v "$bin_hint" || true)"; }
         install_bin "$found" "$bin_hint"; [[ "$name" == "quickshell" ]] && install_bin "$found" "qs"
         [[ "$name" == "hyprland" ]] && { local hctl; hctl="$(find "$dir/build" -type f -executable -name "hyprctl" 2>/dev/null | head -1 || true)"; [[ -n "$hctl" ]] && install_bin "$hctl" "hyprctl"; }
         record_forge "$name" "$repo" "$bin_hint" "cmake" "$sha"
     elif [[ -f "$dir/meson.build" ]]; then
-        local margs=""; [[ "$name" == "imv" ]] && margs="-Dwindows=wayland -Dman=disabled"; (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" LDFLAGS="$HOST_LDFLAGS" meson setup "$dir/build" "$dir" --prefix="$HOME/.local" -Dbuildtype=release -Db_lto=true $margs 2>&1 | tee -a "$FORGE_LOG" && ninja -C "$dir/build" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG") || true
+        local margs=""; [[ "$name" == "imv" ]] && margs="-Dwindows=wayland -Dman=disabled"; (CC="$cc_bin" CXX="$cxx_bin" CFLAGS="$HOST_CFLAGS" CXXFLAGS="$HOST_CXXFLAGS" LDFLAGS="$HOST_LDFLAGS" meson setup "$dir/build" "$dir" --prefix="$HOME/.local" -Dbuildtype=release -Db_lto=true $margs 2>&1 | tee -a "$FORGE_LOG" && ninja -C "$dir/build" -j "$CPU_JOBS" 2>&1 | pipe_progress "$name") || true
         found="$(find "$dir/build" -type f -executable -name "$bin_hint" 2>/dev/null | head -1 || true)"; [[ -x "${found:-}" ]] || { [[ -x "$SYSROOT/bin/$bin_hint" ]] && found="$SYSROOT/bin/$bin_hint" || found="$(command -v "$bin_hint" || true)"; }
         install_bin "$found" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "meson" "$sha"
     elif compgen -G "$dir/*.pro" >/dev/null; then
         local qm="$SYSROOT/bin/qmake6"; [[ -x "$qm" ]] || qm="$(command -v qmake6 || command -v qmake-qt5 || command -v qmake)"
-        (cd "$dir" && "$qm" INCLUDEPATH+="$SYSROOT/include $SYSROOT/include/hidapi $SYSROOT/include/libusb-1.0" QMAKE_CC="$cc_bin" QMAKE_CXX="$cxx_bin" QMAKE_LINK="$cxx_bin" QMAKE_CFLAGS_RELEASE="$HOST_CFLAGS" QMAKE_CXXFLAGS_RELEASE="$HOST_CXXFLAGS" QMAKE_LFLAGS_RELEASE="$HOST_LDFLAGS -L$SYSROOT/lib64" && make -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG")
+        (cd "$dir" && "$qm" INCLUDEPATH+="$SYSROOT/include $SYSROOT/include/hidapi $SYSROOT/include/libusb-1.0" QMAKE_CC="$cc_bin" QMAKE_CXX="$cxx_bin" QMAKE_LINK="$cxx_bin" QMAKE_CFLAGS_RELEASE="$HOST_CFLAGS" QMAKE_CXXFLAGS_RELEASE="$HOST_CXXFLAGS" QMAKE_LFLAGS_RELEASE="$HOST_LDFLAGS -L$SYSROOT/lib64" && make -j "$CPU_JOBS" 2>&1 | pipe_progress "$name")
         found="$(find "$dir" -maxdepth 2 -type f -executable -iname "$bin_hint" | head -1)"; install_bin "$found" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "qmake" "$sha"
     elif [[ -f "$dir/Makefile" || -f "$dir/GNUmakefile" ]]; then
-        CC="$cc_bin" CXX="$cxx_bin" make -C "$dir" OPTFLAGS="-O3 -march=native -mtune=native -flto=auto" -j "$CPU_JOBS" 2>&1 | tee -a "$FORGE_LOG"
+        CC="$cc_bin" CXX="$cxx_bin" make -C "$dir" OPTFLAGS="-O3 -march=native -mtune=native -flto=auto" -j "$CPU_JOBS" 2>&1 | pipe_progress "$name"
         found="$(find "$dir" -maxdepth 2 -type f -executable -name "$bin_hint" | head -1)"; install_bin "$found" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "make" "$sha"
     elif [[ -f "$dir/go.mod" ]]; then
         (cd "$dir" && CGO_CFLAGS="$HOST_CFLAGS" go build -ldflags="-s -w" -o "$bin_hint" ./... 2>&1 | tee -a "$FORGE_LOG") || cp -f "$SYSROOT/bin/$bin_hint" "$dir/$bin_hint"
         install_bin "$dir/$bin_hint" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "go" "$sha"
     elif [[ -f "$dir/build.zig" ]]; then (cd "$dir" && zig build -Doptimize=ReleaseFast -Dcpu=native); install_bin "$dir/zig-out/bin/$bin_hint" "$bin_hint"; record_forge "$name" "$repo" "$bin_hint" "zig" "$sha"
     else set_live 0 error "$name" 100 "[FAIL] No supported build manifest in $dir"; return 1; fi
+    df="$(find "$dir" -maxdepth 3 -name '*.desktop' ! -name '*.in' 2>/dev/null | head -1 || true)"; [[ -n "$df" ]] && { mkdir -p "$HOME/.local/share/applications"; cp -f "$df" "$HOME/.local/share/applications/"; command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true; }
     set_live 0 ok "$name" 100 "[OK] Forged $name (-march=$MARCH_TARGET, linker=$LINKER)"
-    [[ "${IN_UPDATE:-0}" -eq 0 ]] && { command -v supertheme >/dev/null 2>&1 && supertheme sfx play confirm >/dev/null 2>&1 || true; command -v notify-send >/dev/null 2>&1 && notify-send -a "SF FORGE" "Forged $name" "Compiled with -O3 -march=$MARCH_TARGET and installed to $BIN_DIR/$bin_hint." || true; } || true
+    [[ "${IN_UPDATE:-0}" -eq 0 ]] && { [[ -x "$SF_ROOT/lib/sfx.sh" ]] && "$SF_ROOT/lib/sfx.sh" play confirm >/dev/null 2>&1 || true; command -v notify-send >/dev/null 2>&1 && notify-send -a "SF FORGE" "Forged $name" "Compiled with -O3 -march=$MARCH_TARGET and installed to $BIN_DIR/$bin_hint." || true; } || true
 }
 forge_target() {
-    local raw="${1%/}" force="${2:-0}" dry="${3:-0}" custom_name="${4:-}" prof_mode="${5:-shared}"
-    if [[ "$raw" =~ ^https?:// ]] && ! [[ "$raw" =~ ^https?://(www\.)?(github\.com|gitlab\.com|codeberg\.org|sr\.ht)/[^/|]+/[^/|]+$ ]]; then forge_webapp "$raw" "$custom_name" "$prof_mode" "$dry"; return $?
+    local raw="${1%/}" force="${2:-0}" dry="${3:-0}" custom_name="${4:-}" prof_mode="${5:-shared}" r_meta r_deps=""
+    if [[ "$raw" =~ ^(dnf|rpm): ]]; then forge_dnf "$raw" "$dry"; return $?; fi
+    if [[ "$raw" =~ ^(flatpak|flathub): ]] || [[ "$raw" =~ ^(org|com|io|net|app|dev|de|me|im|info|uk|ca|ch|fr|nl|se|no|dk|fi|es|it|pt|pl|cz|jp|kr|au|nz|br)\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_.-]+$ ]]; then forge_flatpak "$raw" "$dry"; return $?; fi
+    if [[ "$raw" == *.toml ]]; then
+        r_meta="$(python3 -c 'import sys,tomllib,urllib.request; u=sys.argv[1].replace("github.com/","raw.githubusercontent.com/").replace("/blob/","/"); b=urllib.request.urlopen(u,timeout=8).read() if u.startswith("http") else open(u,"rb").read(); d=tomllib.load(__import__("io").BytesIO(b)); k,p=(next(iter(d.items())) if len(d)==1 and isinstance(next(iter(d.values())),dict) else ("",d)); nm=p.get("name") or k or "recipe"; print(f"{nm}|{p.get(\"repo\",\"\")}|{p.get(\"bin\",nm)}|{p.get(\"deps\",\"\")}|{p.get(\"cargo_args\",\"\")}")' "$raw" 2>/dev/null || true)"
+        [[ -n "$r_meta" ]] || { set_live 0 error "$raw" 100 "[FAIL] Could not parse recipe $raw"; return 2; }; IFS='|' read -r raw repo bin r_deps cargo_args <<< "$r_meta"
+    elif [[ "$raw" =~ ^https?:// ]] && ! [[ "$raw" =~ ^https?://(www\.)?(github\.com|gitlab\.com|codeberg\.org|sr\.ht|raw\.githubusercontent\.com)/ ]]; then forge_webapp "$raw" "$custom_name" "$prof_mode" "$dry"; return $?
     elif [[ "$raw" == *.* && "$raw" != */* && "${raw,,}" != "io.github.kolunmi.bazaar" ]]; then forge_webapp "https://$raw" "$custom_name" "$prof_mode" "$dry"; return $?; fi
-    raw="${raw%.git}"; raw="${raw#https://github.com/}"; raw="${raw#http://github.com/}"; raw="${raw#github.com/}"; detect_hw
-    local name="$raw" repo="" bin="$raw" cargo_args="" local_src="" git_branch=""
+    raw="${raw%.git}"; raw="${raw#https://github.com/}"; raw="${raw#http://github.com/}"; raw="${raw#github.com/}"; raw="$(printf '%s' "$raw" | sed -E 's#^([^/]+/[^/]+)/(tree|blob|releases|commits|issues|pull).*$#\1#')"; detect_hw
+    local name="${raw##*/}" repo="${repo:-}" bin="${bin:-${raw##*/}}" cargo_args="${cargo_args:-}" local_src="" git_branch=""
     case "${raw,,}" in
-        superfedora|sf|superfedora/superfedora|supertheme|superfedora/supertheme|superforge|superfedora/superforge|supershell|superfedora/supershell|supernotify|superfedora/supernotify|superagent|superfedora/superagent) name="${raw##*/}"; name="${name,,}"; [[ "$name" == "sf" ]] && name="superfedora"; repo="https://github.com/SuperFedora/${name}.git"; bin="$name"; [[ "$name" == "supershell" ]] && { bin="superdock"; cargo_args="--workspace"; }; [[ -d "$HOME/Projects/superfedora/$name" ]] && local_src="$HOME/Projects/superfedora/$name" ;;
-        ripgrep|rg|burntsushi/ripgrep) name="ripgrep"; repo="https://github.com/BurntSushi/ripgrep.git"; bin="rg" ;; fastfetch|fastfetch-cli/fastfetch) name="fastfetch"; repo="https://github.com/fastfetch-cli/fastfetch.git"; bin="fastfetch" ;;
-        idlescreen|idlescreen/idlescreen) name="idlescreen"; repo="https://github.com/idlescreen/idlescreen.git"; bin="idlescreen"; cargo_args="--workspace"; [[ -d "$HOME/Projects/idlescreen/idlescreen" ]] && local_src="$HOME/Projects/idlescreen/idlescreen" ;;
-        fd|sharkdp/fd) name="fd"; repo="https://github.com/sharkdp/fd.git"; bin="fd" ;; zoxide|ajeetdsouza/zoxide) name="zoxide"; repo="https://github.com/ajeetdsouza/zoxide.git"; bin="zoxide" ;; btop|aristocratos/btop) name="btop"; repo="https://github.com/aristocratos/btop.git"; bin="btop" ;;
-        wlctl|aashish-thapa/wlctl) name="wlctl"; repo="https://github.com/aashish-thapa/wlctl.git"; bin="wlctl" ;; bluetui|pythops/bluetui) name="bluetui"; repo="https://github.com/pythops/bluetui.git"; bin="bluetui" ;;
-        wiremix|tsowell/wiremix|tuigreet|apognu/tuigreet) [[ "${raw,,}" == *tuigreet* ]] && { name="tuigreet"; repo="https://github.com/apognu/tuigreet.git"; bin="tuigreet"; } || { name="wiremix"; repo="https://github.com/tsowell/wiremix.git"; bin="wiremix"; } ;;
-        fuzzel|dnkl/fuzzel) name="fuzzel"; repo="https://codeberg.org/dnkl/fuzzel.git"; bin="fuzzel" ;; openrgb|calcprogrammer1/openrgb) name="openrgb"; repo="https://gitlab.com/CalcProgrammer1/OpenRGB.git"; bin="openrgb" ;;
+        superfedora|superfedora/superfedora|superbar|superfedora/superbar|supersettings|superfedora/supersettings|superlock|superfedora/superlock|supertheme|superfedora/supertheme|superforge|superfedora/superforge|supershell|superfedora/supershell|supernotify|superfedora/supernotify) name="${raw##*/}"; name="${name,,}"; [[ "$name" == "supersettings" || "$name" == "superlock" ]] && name="supershell"; repo="https://github.com/SuperFedora/${name}.git"; bin="$name"; [[ "$name" == "supershell" ]] && { bin="supersettings"; cargo_args="--workspace"; }; [[ -d "$HOME/Projects/superfedora/$name" ]] && local_src="$HOME/Projects/superfedora/$name" ;;
+        ripgrep|rg|burntsushi/ripgrep) name="ripgrep"; repo="https://github.com/BurntSushi/ripgrep.git"; bin="rg" ;; fastfetch|fastfetch-cli/fastfetch) name="fastfetch"; repo="https://github.com/fastfetch-cli/fastfetch.git"; bin="fastfetch" ;; idlescreen|idlescreen/idlescreen) name="idlescreen"; repo="https://github.com/idlescreen/idlescreen.git"; bin="idlescreen"; cargo_args="--workspace"; [[ -d "$HOME/Projects/idlescreen/idlescreen" ]] && local_src="$HOME/Projects/idlescreen/idlescreen" ;;
+        fd|sharkdp/fd) name="fd"; repo="https://github.com/sharkdp/fd.git"; bin="fd" ;; zoxide|ajeetdsouza/zoxide) name="zoxide"; repo="https://github.com/ajeetdsouza/zoxide.git"; bin="zoxide" ;; btop|aristocratos/btop) name="btop"; repo="https://github.com/aristocratos/btop.git"; bin="btop" ;; wlctl|aashish-thapa/wlctl) name="wlctl"; repo="https://github.com/aashish-thapa/wlctl.git"; bin="wlctl" ;; bluetui|pythops/bluetui) name="bluetui"; repo="https://github.com/pythops/bluetui.git"; bin="bluetui" ;;
+        wiremix|tsowell/wiremix|tuigreet|apognu/tuigreet) [[ "${raw,,}" == *tuigreet* ]] && { name="tuigreet"; repo="https://github.com/apognu/tuigreet.git"; bin="tuigreet"; } || { name="wiremix"; repo="https://github.com/tsowell/wiremix.git"; bin="wiremix"; } ;; fuzzel|dnkl/fuzzel) name="fuzzel"; repo="https://codeberg.org/dnkl/fuzzel.git"; bin="fuzzel" ;; openrgb|calcprogrammer1/openrgb) name="openrgb"; repo="https://gitlab.com/CalcProgrammer1/OpenRGB.git"; bin="openrgb" ;;
         hyprland|hyprwm/hyprland) name="hyprland"; repo="https://github.com/hyprwm/Hyprland.git"; bin="Hyprland"; git_branch="v$(rpm -q --qf '%{VERSION}' hyprland 2>/dev/null || echo 0.56.2)" ;; quickshell|outfoxxed/quickshell|quickshell-mirror/quickshell) name="quickshell"; repo="https://github.com/quickshell-mirror/quickshell.git"; bin="quickshell" ;;
-        yazi|sxyazi/yazi) name="yazi"; repo="https://github.com/sxyazi/yazi.git"; bin="yazi"; cargo_args="-p yazi-fm" ;; dua-cli|dua|byron/dua-cli) name="dua-cli"; repo="https://github.com/Byron/dua-cli.git"; bin="dua"; cargo_args="--bin dua" ;;
-        ouch|ouch-org/ouch) name="ouch"; repo="https://github.com/ouch-org/ouch.git"; bin="ouch" ;; oculante|woelper/oculante) name="oculante"; repo="https://github.com/woelper/oculante.git"; bin="oculante" ;;
-        imv|exec64/imv|*sr.ht/~exec64/imv) name="imv"; repo="https://git.sr.ht/~exec64/imv"; bin="imv" ;; satty|gabm/satty) name="satty"; repo="https://github.com/gabm/Satty.git"; bin="satty" ;;
-        hyprpicker|hyprwm/hyprpicker) name="hyprpicker"; repo="https://github.com/hyprwm/hyprpicker.git"; bin="hyprpicker" ;; wl-screenrec|russelltg/wl-screenrec) name="wl-screenrec"; repo="https://github.com/russelltg/wl-screenrec.git"; bin="wl-screenrec" ;;
-        zathura|pwmt/zathura) name="zathura"; repo="https://github.com/pwmt/zathura.git"; bin="zathura" ;; typst|typst/typst) name="typst"; repo="https://github.com/typst/typst.git"; bin="typst"; cargo_args="-p typst-cli" ;;
-        csvlens|ys-l/csvlens) name="csvlens"; repo="https://github.com/YS-L/csvlens.git"; bin="csvlens" ;; helix|hx|helix-editor/helix) name="helix"; repo="https://github.com/helix-editor/helix.git"; bin="hx"; cargo_args="-p helix-term" ;;
-        fend|printfn/fend) name="fend"; repo="https://github.com/printfn/fend.git"; bin="fend"; cargo_args="-p fend" ;; termusic|tramhao/termusic) name="termusic"; repo="https://github.com/tramhao/termusic.git"; bin="termusic"; cargo_args="--bin termusic" ;;
-        cava|karlstav/cava) name="cava"; repo="https://github.com/karlstav/cava.git"; bin="cava" ;; mpv|mpv-player/mpv) name="mpv"; repo="https://github.com/mpv-player/mpv.git"; bin="mpv" ;;
+        yazi|sxyazi/yazi) name="yazi"; repo="https://github.com/sxyazi/yazi.git"; bin="yazi"; cargo_args="-p yazi-fm" ;; dua-cli|dua|byron/dua-cli) name="dua-cli"; repo="https://github.com/Byron/dua-cli.git"; bin="dua"; cargo_args="--bin dua" ;; ouch|ouch-org/ouch) name="ouch"; repo="https://github.com/ouch-org/ouch.git"; bin="ouch" ;; oculante|woelper/oculante) name="oculante"; repo="https://github.com/woelper/oculante.git"; bin="oculante" ;;
+        imv|exec64/imv|*sr.ht/~exec64/imv) name="imv"; repo="https://git.sr.ht/~exec64/imv"; bin="imv" ;; satty|gabm/satty) name="satty"; repo="https://github.com/gabm/Satty.git"; bin="satty" ;; hyprpicker|hyprwm/hyprpicker) name="hyprpicker"; repo="https://github.com/hyprwm/hyprpicker.git"; bin="hyprpicker" ;; wl-screenrec|russelltg/wl-screenrec) name="wl-screenrec"; repo="https://github.com/russelltg/wl-screenrec.git"; bin="wl-screenrec" ;;
+        zathura|pwmt/zathura) name="zathura"; repo="https://github.com/pwmt/zathura.git"; bin="zathura" ;; typst|typst/typst) name="typst"; repo="https://github.com/typst/typst.git"; bin="typst"; cargo_args="-p typst-cli" ;; csvlens|ys-l/csvlens) name="csvlens"; repo="https://github.com/YS-L/csvlens.git"; bin="csvlens" ;; helix|hx|helix-editor/helix) name="helix"; repo="https://github.com/helix-editor/helix.git"; bin="hx"; cargo_args="-p helix-term" ;;
+        fend|printfn/fend) name="fend"; repo="https://github.com/printfn/fend.git"; bin="fend"; cargo_args="-p fend" ;; termusic|tramhao/termusic) name="termusic"; repo="https://github.com/tramhao/termusic.git"; bin="termusic"; cargo_args="--bin termusic" ;; cava|karlstav/cava) name="cava"; repo="https://github.com/karlstav/cava.git"; bin="cava" ;; mpv|mpv-player/mpv) name="mpv"; repo="https://github.com/mpv-player/mpv.git"; bin="mpv" ;;
         cliphist|sentriz/cliphist) name="cliphist"; repo="https://github.com/sentriz/cliphist.git"; bin="cliphist" ;; bazarr|morpheus65535/bazarr) name="bazarr"; repo="https://github.com/morpheus65535/bazarr.git"; bin="bazarr" ;;
-        bazaar|kolunmi/bazaar|io.github.kolunmi.bazaar) name="bazaar"; repo="https://github.com/kolunmi/bazaar.git"; bin="bazaar"; [[ "$dry" -eq 0 ]] && { flatpak install --user -y flathub io.github.kolunmi.Bazaar >/dev/null 2>&1 || true; printf '#!/usr/bin/env bash\n[[ "${1:-}" == "--version" ]] && { echo "Bazaar Flatpak Store (io.github.kolunmi.Bazaar)"; exit 0; }\nexec flatpak run io.github.kolunmi.Bazaar "$@"\n' > "$BIN_DIR/bazaar" && chmod 755 "$BIN_DIR/bazaar"; record_forge bazaar "$repo" bazaar flatpak ""; return 0; } ;;
-        */*) name="${raw##*/}"; bin="$name"; [[ "$raw" == http*://* || "$raw" == git@* ]] && repo="${raw}.git" || repo="https://github.com/${raw}.git" ;;
-        *) set_live 0 error "$raw" 100 "[FAIL] Unknown target '$raw' (paste a URL https://... or GitHub owner/repo)"; return 2 ;;
+        bazaar|kolunmi/bazaar|io.github.kolunmi.bazaar) forge_flatpak "io.github.kolunmi.Bazaar" "$dry"; return $? ;;
+        */*) name="${raw##*/}"; bin="${bin:-$name}"; [[ "$raw" == http*://* || "$raw" == git@* ]] && repo="${raw}.git" || repo="https://github.com/${raw}.git" ;;
+        *) [[ -n "$repo" ]] || { set_live 0 error "$raw" 100 "[FAIL] Unknown target '$raw' (use owner/repo, dnf:<pkg>, flatpak:<id>, or https://...)"; return 2; } ;;
     esac
-    [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] Would forge %s (%s -> %s/%s) with -march=%s (%s threads, linker=%s)\n  Deps: %s\n' "$name" "$repo" "$BIN_DIR" "$bin" "$MARCH_TARGET" "$CPU_JOBS" "$LINKER" "$(preset_deps "$name")"; return 0; }
+    [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] Would forge %s (%s -> %s/%s) with -march=%s (%s threads, linker=%s)\n  Deps: %s\n' "$name" "$repo" "$BIN_DIR" "$bin" "$MARCH_TARGET" "$CPU_JOBS" "$LINKER" "${r_deps:-$(preset_deps "$name")}"; return 0; }
     local sf_stamp="$STAMP_DIR/$name.stamp"; [[ -f "$sf_stamp" ]] || sf_stamp="$LEGACY_STAMP_DIR/$name.stamp"
-    if [[ "$force" -eq 0 && -x "$BIN_DIR/$bin" && -f "$sf_stamp" ]] && grep -q "^arch=$MARCH_TARGET$" "$sf_stamp" 2>/dev/null; then
+    if [[ "$force" -eq 0 && ( "${SF_BUILD_MODE:-source}" =~ ^(quick|race)$ || ! $(grep -q "^sha=quick$" "$sf_stamp" 2>/dev/null && echo 1) ) && -x "$BIN_DIR/$bin" && -f "$sf_stamp" ]] && grep -q "^arch=$MARCH_TARGET$" "$sf_stamp" 2>/dev/null; then
         if [[ "${CHECK_REMOTE:-0}" -eq 1 ]]; then
             local rem_sha cur_sha; cur_sha="$(awk -F= '/^(sha|commit)=/{print $2; exit}' "$sf_stamp" 2>/dev/null || true)"
             [[ -n "$local_src" ]] && rem_sha="$(git -C "$local_src" rev-parse HEAD 2>/dev/null || true)" || rem_sha="$(timeout 5 git ls-remote "$repo" "${git_branch:-HEAD}" 2>/dev/null | awk '{print $1; exit}' || true)"
             if [[ -z "$rem_sha" || -z "$cur_sha" || "$rem_sha" == "$cur_sha" ]]; then [[ ! -f "$STAMP_DIR/$name.stamp" ]] && cp -f "$sf_stamp" "$STAMP_DIR/$name.stamp"; echo "[OK] $name ($BIN_DIR/$bin) is already up-to-date for $MARCH_TARGET (sha:${cur_sha:0:7})" | tee -a "$FORGE_LOG"; return 0; fi
         else set_live 0 ok "$name" 100 "[OK] $name ($BIN_DIR/$bin) is already forged for $MARCH_TARGET (use --force to rebuild)"; return 0; fi
     fi
+    if [[ "${SF_BUILD_MODE:-source}" =~ ^(quick|race)$ && "$force" -eq 0 ]]; then
+        [[ "$name" == "wlctl" && ! -x "$BIN_DIR/wlctl" ]] && curl -fsSL --max-time 8 https://github.com/aashish-thapa/wlctl/releases/latest/download/wlctl-x86_64-unknown-linux-musl -o "$BIN_DIR/wlctl" 2>/dev/null && chmod 755 "$BIN_DIR/wlctl" || true
+        [[ "$name" == "bluetui" && ! -x "$BIN_DIR/bluetui" ]] && curl -fsSL --max-time 8 https://github.com/pythops/bluetui/releases/latest/download/bluetui-x86_64-linux-musl -o "$BIN_DIR/bluetui" 2>/dev/null && chmod 755 "$BIN_DIR/bluetui" || true
+        [[ "$name" == "oculante" && ! -x "$BIN_DIR/oculante" ]] && curl -fsSL --max-time 8 https://github.com/woelper/oculante/releases/latest/download/oculante_linux -o "$BIN_DIR/oculante" 2>/dev/null && chmod 755 "$BIN_DIR/oculante" || true
+        [[ -x "$BIN_DIR/$bin" ]] && { record_forge "$name" "$repo" "$bin" "release" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 fast binary ready: $name ($BIN_DIR/$bin)"; return 0; }
+        [[ -x "/usr/bin/$bin" ]] && { install_bin "/usr/bin/$bin" "$bin"; record_forge "$name" "$repo" "$bin" "system" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 system binary ready: $name ($BIN_DIR/$bin)"; return 0; }
+        local bpkg="$name"; [[ "$cargo_args" == -p\ * ]] && bpkg="${cargo_args#-p }"; command -v cargo-binstall >/dev/null 2>&1 && cargo-binstall -y --force --install-path "$BIN_DIR" "$bpkg" >/dev/null 2>&1 && [[ -x "$BIN_DIR/$bin" ]] && { record_forge "$name" "$repo" "$bin" "binstall" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 prebuilt crate ready: $name ($BIN_DIR/$bin)"; return 0; } || true
+    fi
     [[ "${IN_UPDATE:-0}" -eq 0 ]] && : > "$FORGE_LOG"; set_live 1 running "$name" 15 "[1/4] Checking & staging build headers for $name..."
     # shellcheck disable=SC2046
-    ensure_pkgs $(preset_deps "$name"); [[ -n "$local_src" ]] && { forge_generic_dir "$local_src" "$name" "$repo" "$bin" "$cargo_args"; return 0; }
+    ensure_pkgs ${r_deps:-$(preset_deps "$name")}; [[ -n "$local_src" ]] && { forge_generic_dir "$local_src" "$name" "$repo" "$bin" "$cargo_args"; return 0; }
     CURRENT_TMP="$(mktemp -d -p "$TMP_BUILD")"; set_live 1 running "$name" 35 "[2/4] Cloning $repo ${git_branch:+($git_branch)}..."
-    if [[ -n "$git_branch" ]]; then git clone --depth 1 --branch "$git_branch" --recurse-submodules --shallow-submodules "$repo" "$CURRENT_TMP/src" 2>&1 | tee -a "$FORGE_LOG" || git clone --depth 1 --recurse-submodules --shallow-submodules "$repo" "$CURRENT_TMP/src" 2>&1 | tee -a "$FORGE_LOG"
-    else git clone --depth 1 --recurse-submodules --shallow-submodules "$repo" "$CURRENT_TMP/src" 2>&1 | tee -a "$FORGE_LOG"; fi
-    forge_generic_dir "$CURRENT_TMP/src" "$name" "$repo" "$bin" "$cargo_args"; rm -rf "$CURRENT_TMP"; CURRENT_TMP=""
+    if [[ -n "$git_branch" ]]; then git clone --depth 1 --branch "$git_branch" --recurse-submodules --shallow-submodules "$repo" "$CURRENT_TMP/src" 2>&1 | tee -a "$FORGE_LOG" || git clone --depth 1 --recurse-submodules --shallow-submodules "$repo" "$CURRENT_TMP/src" 2>/dev/null; else git clone --depth 1 --recurse-submodules --shallow-submodules "$repo" "$CURRENT_TMP/src" 2>&1 | tee -a "$FORGE_LOG"; fi; forge_generic_dir "$CURRENT_TMP/src" "$name" "$repo" "$bin" "$cargo_args"; rm -rf "$CURRENT_TMP"; CURRENT_TMP=""
+}
+forge_dnf() {
+    local pkg="${1#dnf:}"; pkg="${pkg#rpm:}"; local dry="${2:-0}" ver bin_p; detect_hw; [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] Would install Fedora RPM package %s via DNF\n' "$pkg"; return 0; }
+    [[ "${IN_UPDATE:-0}" -eq 0 ]] && : > "$FORGE_LOG"; set_live 1 running "dnf:$pkg" 30 "[1/2] Resolving & installing Fedora RPM '$pkg' via DNF..."
+    if [[ $EUID -eq 0 ]]; then dnf install -y "$pkg" 2>&1 | tee -a "$FORGE_LOG"; elif sudo -n true 2>/dev/null; then sudo -n dnf install -y "$pkg" 2>&1 | tee -a "$FORGE_LOG"; elif command -v pkexec >/dev/null 2>&1 && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then pkexec dnf install -y "$pkg" 2>&1 | tee -a "$FORGE_LOG" || ensure_pkgs "$pkg"; else ensure_pkgs "$pkg"; fi
+    ver="$(rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}' "$pkg" 2>/dev/null || echo "fedora-rpm")"; bin_p="$(command -v "$pkg" 2>/dev/null || echo "/usr/bin/$pkg")"; python3 -c 'import json,os,sys,time; p,k,b,v=sys.argv[1:5]; ts=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()); d=json.load(open(p)) if os.path.exists(p) else {}; d.setdefault("targets",{})[k]={"type":"dnf","repo":"fedora-rpm","binary":b,"build_system":"dnf","march":"x86_64-rpm","version":v,"timestamp":ts,"built_at":ts}; json.dump(d,open(p,"w"),indent=2)' "$FORGE_JSON" "$pkg" "$bin_p" "$ver"; set_live 0 ok "$pkg" 100 "[OK] Installed Fedora DNF package '$pkg' ($ver)"
+}
+forge_flatpak() {
+    local aid="${1#flatpak:}"; aid="${aid#flathub:}"; local dry="${2:-0}" slug="${aid##*.}" ver; slug="${slug,,}"; detect_hw; [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] Would install Flatpak %s from Flathub\n' "$aid"; return 0; }
+    [[ "${IN_UPDATE:-0}" -eq 0 ]] && : > "$FORGE_LOG"; set_live 1 running "$aid" 25 "[1/3] Configuring Flathub & resolving Flatpak '$aid'..."; flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
+    set_live 1 running "$aid" 60 "[2/3] Installing Flatpak '$aid' from Flathub..."; flatpak install --user -y --noninteractive flathub "$aid" 2>&1 | tee -a "$FORGE_LOG" || flatpak install -y --noninteractive flathub "$aid" 2>&1 | tee -a "$FORGE_LOG" || true
+    printf '#!/usr/bin/env bash\n[[ "${1:-}" == "--version" ]] && { echo "%s (%s)"; exit 0; }\nexec flatpak run %s "$@"\n' "$slug" "$aid" "$aid" > "$BIN_DIR/$slug" && chmod 755 "$BIN_DIR/$slug"; ver="$(flatpak info --user "$aid" 2>/dev/null | awk -F': ' '/^\s*Version:/{print $2; exit}' || flatpak info "$aid" 2>/dev/null | awk -F': ' '/^\s*Version:/{print $2; exit}' || echo "flathub")"
+    python3 -c 'import json,os,sys,time; p,k,aid,b,v=sys.argv[1:6]; ts=time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()); d=json.load(open(p)) if os.path.exists(p) else {}; d.setdefault("targets",{})[k]={"type":"flatpak","app_id":aid,"name":k,"repo":"flathub","binary":b,"build_system":"flatpak","march":"sandbox","version":v,"timestamp":ts,"built_at":ts}; json.dump(d,open(p,"w"),indent=2)' "$FORGE_JSON" "$slug" "$aid" "$BIN_DIR/$slug" "$ver"; set_live 0 ok "$slug" 100 "[OK] Installed Flatpak '$aid' ($BIN_DIR/$slug)"
 }
 check_updates_forge() {
     detect_hw; python3 -c 'import concurrent.futures as cf,glob,os,subprocess as sp,sys; sd,ld,dry=sys.argv[1],sys.argv[2],sys.argv[3]=="1"; st={os.path.basename(p)[:-6]:p for d in (ld,sd) for p in sorted(glob.glob(os.path.join(d,"*.stamp")))}; print("SuperForge Stamp & Upstream Git SHA Tracker (%s)\n  %-14s %-15s %-12s %-12s STATUS\n  %-14s %-15s %-12s %-12s ------"%(sd,"RECIPE","BINARY","LOCAL SHA","REMOTE SHA","------","------","---------","----------"))
@@ -219,37 +214,41 @@ for n,b,l,r,s in rows: print("  %-14s %-15s %-12s %-12s [%s]"%(n,b,l,r,s))
 print("\n[OK] Audited %d tracked source stamp(s) in %s (%d update(s) available)."%(len(rows),sd,sum(1 for x in rows if x[4]=="update-available")))' "$STAMP_DIR" "$LEGACY_STAMP_DIR" "${DRY:-0}"
 }
 remove_forge() {
-    local tgt="${1#sf-webapp-}"; tgt="${tgt,,}"; local aid="sf-webapp-$tgt"; command -v superdock >/dev/null 2>&1 && superdock unpin "$aid" >/dev/null 2>&1 || true
-    rm -f "$BIN_DIR/$aid" "$HOME/.local/share/applications/$aid.desktop" "$STAMP_DIR/$tgt.stamp" "$LEGACY_STAMP_DIR/$tgt.stamp" && rm -rf "${WEBAPP_DIR:?}/$tgt" "$HOME/.local/share/icons/hicolor"/*/apps/"$aid.png"
-    python3 -c 'import json,os,sys; p,k=sys.argv[1:3]; d=json.load(open(p)) if os.path.exists(p) else {}; d.get("targets",{}).pop(k,None); json.dump(d,open(p,"w"),indent=2)' "$FORGE_JSON" "$tgt" 2>/dev/null || true
-    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true; set_live 0 ok "$tgt" 100 "[OK] Removed forged target '$tgt'"
+    local raw="${1#sf-webapp-}" tgt aid; raw="${raw#dnf:}"; raw="${raw#rpm:}"; raw="${raw#flatpak:}"; raw="${raw#flathub:}"; tgt="${raw,,}"
+    [[ "$1" =~ ^(dnf|rpm): ]] && { sudo -n dnf remove -y "$raw" 2>/dev/null || (command -v pkexec >/dev/null 2>&1 && pkexec dnf remove -y "$raw" 2>/dev/null) || true; rm -f "$HOME/.local/pkg_cache/.ok-$raw"; }
+    if [[ "$1" =~ ^(flatpak|flathub): ]] || [[ "$raw" == *.*.* ]]; then flatpak uninstall --user -y --noninteractive "$raw" >/dev/null 2>&1 || flatpak uninstall -y --noninteractive "$raw" >/dev/null 2>&1 || true; tgt="${raw##*.}"; tgt="${tgt,,}"; fi
+    aid="sf-webapp-$tgt"; [[ -x "$SF_ROOT/lib/panel-ctl.sh" ]] && "$SF_ROOT/lib/panel-ctl.sh" unpin "$aid" >/dev/null 2>&1 || true; rm -f "$BIN_DIR/$aid" "$BIN_DIR/$tgt" "$HOME/.local/share/applications/$aid.desktop" "$STAMP_DIR/$tgt.stamp" "$LEGACY_STAMP_DIR/$tgt.stamp" && rm -rf "${WEBAPP_DIR:?}/$tgt" "$HOME/.local/share/icons/hicolor"/*/apps/"$aid.png"
+    python3 -c 'import json,os,sys; p,k=sys.argv[1:3]; d=json.load(open(p)) if os.path.exists(p) else {}; d.get("targets",{}).pop(k,None); json.dump(d,open(p,"w"),indent=2)' "$FORGE_JSON" "$tgt" 2>/dev/null || true; command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true; set_live 0 ok "$tgt" 100 "[OK] Removed target '$tgt'"
 }
 update_forge() {
     local dry="${1:-0}" src_list="" wa_list="" t u nm pm
-    src_list="$( { [[ -d "$STAMP_DIR" ]] && find "$STAMP_DIR" -maxdepth 1 -name '*.stamp' -printf '%f\n' | sed 's/\.stamp$//'; [[ -d "$LEGACY_STAMP_DIR" ]] && find "$LEGACY_STAMP_DIR" -maxdepth 1 -name '*.stamp' -printf '%f\n' | sed 's/\.stamp$//'; [[ -f "$FORGE_JSON" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])).get("targets",{}); print("\n".join(v.get("repo",k) if "/" in k else k for k,v in d.items() if v.get("type")!="webapp"))' "$FORGE_JSON" 2>/dev/null; } | awk 'NF && !seen[$0]++' )"
+    src_list="$( { [[ -d "$STAMP_DIR" ]] && find "$STAMP_DIR" -maxdepth 1 -name '*.stamp' -printf '%f\n' | sed 's/\.stamp$//'; [[ -d "$LEGACY_STAMP_DIR" ]] && find "$LEGACY_STAMP_DIR" -maxdepth 1 -name '*.stamp' -printf '%f\n' | sed 's/\.stamp$//'; [[ -f "$FORGE_JSON" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])).get("targets",{}); print("\n".join(v.get("repo",k) if "/" in k else k for k,v in d.items() if v.get("type") not in ("webapp","dnf","flatpak")))' "$FORGE_JSON" 2>/dev/null; } | awk 'NF && !seen[$0]++' )"
     [[ -f "$FORGE_JSON" ]] && wa_list="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])).get("targets",{}); [print(v.get("url","")+"|"+v.get("name","")+"|"+v.get("profile","shared")) for v in d.values() if v.get("type")=="webapp" and v.get("url")]' "$FORGE_JSON" 2>/dev/null || true)"
-    [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] superforge update:\n  1. System RPMs : dnf upgrade --refresh -y\n  2. Runtimes    : flatpak update -y && rustup update\n  3. Source      : %s\n  4. WebApps     : %s\n' "${src_list//$'\n'/ }" "${wa_list//$'\n'/ }"; return 0; }
-    : > "$FORGE_LOG"; IN_UPDATE=1; set_live 1 running "system (dnf)" 10 "[1/4] Checking Fedora system packages (dnf upgrade)..."
-    if [[ $EUID -eq 0 ]]; then dnf upgrade --refresh -y 2>&1 | tee -a "$FORGE_LOG" || true; elif sudo -n true 2>/dev/null; then sudo -n dnf upgrade --refresh -y 2>&1 | tee -a "$FORGE_LOG" || true; elif [[ -t 0 ]]; then sudo dnf upgrade --refresh -y 2>&1 | tee -a "$FORGE_LOG" || true; fi
-    set_live 1 running "toolchains & flatpak" 30 "[2/4] Updating Flatpak runtimes & Rust compiler toolchain..."
-    command -v flatpak >/dev/null 2>&1 && flatpak update -y --noninteractive 2>&1 | tee -a "$FORGE_LOG" || true; command -v rustup >/dev/null 2>&1 && rustup update 2>&1 | tee -a "$FORGE_LOG" || true
-    set_live 1 running "source builds" 55 "[3/4] Checking forged native binaries (-O3 -march=native)..."
-    for t in $src_list; do CHECK_REMOTE=1 forge_target "$t" "$FORCE" 0; done
-    set_live 1 running "webapps" 85 "[4/4] Refreshing chromeless Firefox WebApp icons & profiles..."
-    while IFS='|' read -r u nm pm; do [[ -n "$u" ]] && NO_PIN=1 forge_webapp "$u" "$nm" "${pm:-shared}" 0; done <<< "$wa_list"
-    IN_UPDATE=0; set_live 0 ok "update complete" 100 "[OK] Updated system packages, toolchains, forged binaries & WebApps"
-    command -v notify-send >/dev/null 2>&1 && notify-send -a "SF FORGE" "Forge Update Complete" "Verified toolchains, forged binaries, and Firefox WebApps." || true
+    [[ "$dry" -eq 1 ]] && { printf '[DRY-RUN] superfedora forge update:\n  1. System RPMs : dnf upgrade --refresh -y\n  2. Runtimes    : flatpak update -y && rustup update\n  3. Source      : %s\n  4. WebApps     : %s\n' "${src_list//$'\n'/ }" "${wa_list//$'\n'/ }"; return 0; }
+    : > "$FORGE_LOG"; IN_UPDATE=1; set_live 1 running "system (dnf)" 10 "[1/4] Checking Fedora system packages (dnf upgrade)..."; if [[ $EUID -eq 0 ]]; then dnf upgrade --refresh -y 2>&1 | tee -a "$FORGE_LOG" || true; elif sudo -n true 2>/dev/null; then sudo -n dnf upgrade --refresh -y 2>&1 | tee -a "$FORGE_LOG" || true; elif [[ -t 0 ]]; then sudo dnf upgrade --refresh -y 2>&1 | tee -a "$FORGE_LOG" || true; fi
+    set_live 1 running "toolchains & flatpak" 30 "[2/4] Updating Flatpak runtimes & Rust compiler toolchain..."; command -v flatpak >/dev/null 2>&1 && flatpak update -y --noninteractive 2>&1 | tee -a "$FORGE_LOG" || true; command -v rustup >/dev/null 2>&1 && rustup update 2>&1 | tee -a "$FORGE_LOG" || true
+    set_live 1 running "source builds" 55 "[3/4] Checking forged native binaries (-O3 -march=native)..."; for t in $src_list; do CHECK_REMOTE=1 forge_target "$t" "$FORCE" 0; done
+    set_live 1 running "webapps" 85 "[4/4] Refreshing chromeless Firefox WebApp icons & profiles..."; while IFS='|' read -r u nm pm; do [[ -n "$u" ]] && NO_PIN=1 forge_webapp "$u" "$nm" "${pm:-shared}" 0; done <<< "$wa_list"
+    IN_UPDATE=0; set_live 0 ok "update complete" 100 "[OK] Updated system packages, toolchains, forged binaries & WebApps"; command -v notify-send >/dev/null 2>&1 && notify-send -a "SF FORGE" "Forge Update Complete" "Verified toolchains, forged binaries, and Firefox WebApps." || true
 }
-FORCE=0; DRY=0; INSTALL_DEPS=0; PROF_MODE="shared"; NO_PIN=0; ARGS=()
-for a in "$@"; do case "$a" in --force|-f) FORCE=1 ;; --dry-run|-n) DRY=1 ;; --install) INSTALL_DEPS=1 ;; --isolated) PROF_MODE="isolated" ;; --shared) PROF_MODE="shared" ;; --no-pin) NO_PIN=1 ;; --name) ;; -h|--help|help) sed -n '7,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;; *) ARGS+=("$a") ;; esac; done
-[[ "${ARGS[0]:-}" =~ ^(build|forge|install)$ ]] && ARGS=("${ARGS[@]:1}"); CMD="${ARGS[0]:-status}"
+print_status() {
+    detect_hw; local p b st; printf 'SuperFedora Forge — Hardware-Tuned Source Builder & Firefox WebApp Engine\n  CPU Model    : %s\n  Target Arch  : -march=%s (%s, %s threads)\n  SIMD / ISA   : %s\n  Fast Linker  : %s\n  GPU Device   : %s\n  Stamp Store  : %s\n  CFLAGS       : %s\n  RUSTFLAGS    : %s\n\n  PRESET         BINARY            STATUS\n  ------         ------            ------\n' "$CPU_MODEL" "$MARCH_TARGET" "$CPU_ARCH" "$CPU_JOBS" "$ISA_FLAGS" "$LINKER" "$GPU_INFO" "$STAMP_DIR" "$HOST_CFLAGS" "$HOST_RUSTFLAGS"
+    for p in superfedora:superfedora supertheme:supertheme superforge:superforge superbar:superbar supershell:supersettings supernotify:supernotify ripgrep:rg fastfetch:fastfetch idlescreen:idlescreen fd:fd zoxide:zoxide btop:btop wlctl:wlctl bluetui:bluetui wiremix:wiremix fuzzel:fuzzel openrgb:openrgb hyprland:Hyprland quickshell:quickshell yazi:yazi dua-cli:dua ouch:ouch oculante:oculante imv:imv satty:satty hyprpicker:hyprpicker wl-screenrec:wl-screenrec zathura:zathura typst:typst csvlens:csvlens helix:hx fend:fend termusic:termusic cava:cava mpv:mpv cliphist:cliphist bazarr:bazarr; do b="${p#*:}"; p="${p%:*}"; st="not-forged"; [[ -f "$STAMP_DIR/$p.stamp" || -f "$LEGACY_STAMP_DIR/$p.stamp" || -x "$BIN_DIR/$b" ]] && st="forged ($MARCH_TARGET)"; printf '  %-14s %-17s [%s]\n' "$p" "$b" "$st"; done
+    [[ -f "$FORGE_JSON" ]] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])).get("targets",{}); w=[v for v in d.values() if v.get("type")=="webapp"]; w and print("\n  WEBAPP       APP ID                  PROFILE    URL\n  ------       ------                  -------    ---"); [print("  %-12s %-23s %-10s %s"%(v.get("name","?")[:12],v.get("app_id","?"),v.get("profile","shared"),v.get("url",""))) for v in w]' "$FORGE_JSON" || true
+}
+mock_target() { local name="${1#mock:}" row pct step log; detect_hw; : > "$FORGE_LOG"; for row in "14|[1/4] Staging -devel headers for $name...|[sysroot] Verified $(preset_deps "$name")" "32|[2/4] Cloning SuperFedora/$name (shallow)...|Receiving objects: 100% (418/418), done." "54|[3/4] Compiling $name (-O3 -march=$MARCH_TARGET)...|Compiling ${name//-/_}_core v0.5.1 (codegen-units=1)" "76|[3/4] Optimizing LTO & SIMD ($ISA_FLAGS)...|Running fat-LTO pass (-march=$MARCH_TARGET, $CPU_JOBS threads)" "92|[4/4] Linking $name with $LINKER & stripping...|Linking target/release/$name (-fuse-ld=$LINKER)"; do IFS='|' read -r pct step log <<< "$row"; echo "$log" >> "$FORGE_LOG"; set_live 1 running "$name" "$pct" "$step"; sleep 1.3; done; set_live 0 ok "$name" 100 "[OK] Forged $name (-march=$MARCH_TARGET, linker=$LINKER)"; }
+enqueue_and_drain() {
+    local is_mock="$1"; shift; local -a items=("$@"); local item next; [[ ${#items[@]} -eq 0 && "$is_mock" == "1" ]] && items=(idlescreen ripgrep btop yazi); [[ "$DRY" -eq 1 ]] && { for item in "${items[@]}"; do forge_target "${item#mock:}" "$FORCE" 1 "" "$PROF_MODE"; done; return 0; }
+    for item in "${items[@]}"; do printf '%s\n' "${is_mock:+mock:}${item#mock:}" >> "$QUEUE_FILE"; done; exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then python3 -c 'import json,os,sys; p,qf,df=sys.argv[1:4]; rd=lambda f:[l.strip().removeprefix("mock:") for l in open(f) if l.strip()] if os.path.exists(f) else []; d=json.load(open(p)) if os.path.exists(p) else {}; d["queue"]=rd(qf); d["done"]=rd(df); json.dump(d,open(p,"w"))' "$LIVE_JSON" "$QUEUE_FILE" "$DONE_FILE" 2>/dev/null || true; command -v qs >/dev/null 2>&1 && qs ipc call status reloadForge >/dev/null 2>&1 || true; echo "[+] Queued ${items[*]} in SuperForge queue"; return 0; fi
+    : > "$DONE_FILE"; while [[ -s "$QUEUE_FILE" ]]; do next="$(head -n 1 "$QUEUE_FILE")"; sed -i '1d' "$QUEUE_FILE"; [[ -z "$next" ]] && continue; if [[ "$next" == mock:* ]]; then mock_target "${next#mock:}"; else forge_target "$next" "$FORCE" 0 "" "$PROF_MODE"; fi; done; rm -f "$QUEUE_FILE"
+}
+FORCE=0; DRY=0; INSTALL_DEPS=0; ASYNC=0; PROF_MODE="shared"; NO_PIN=0; ARGS=(); for a in "$@"; do case "$a" in --force|-f) FORCE=1 ;; --dry-run|-n) DRY=1 ;; --install) INSTALL_DEPS=1 ;; --quick) export SF_BUILD_MODE="quick" ;; --async|--background|-b) ASYNC=1 ;; --isolated) PROF_MODE="isolated" ;; --shared) PROF_MODE="shared" ;; --no-pin) NO_PIN=1 ;; --name) ;; -h|--help|help) sed -n '7,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;; *) ARGS+=("$a") ;; esac; done; [[ "${ARGS[0]:-}" =~ ^(build|forge|install)$ ]] && ARGS=("${ARGS[@]:1}"); CMD="${ARGS[0]:-status}"
 # shellcheck disable=SC2046
 case "$CMD" in
-    check-updates|check-update|outdated) check_updates_forge ;;
-    deps) detect_hw; t="${ARGS[1]:-hyprland}"; echo "Dependencies for $t: $(preset_deps "$t")"; [[ $INSTALL_DEPS -eq 1 ]] && ensure_pkgs $(preset_deps "$t") || true ;;
-    webapp|web|pwa) forge_webapp "${ARGS[1]:?url required}" "${ARGS[2]:-}" "$PROF_MODE" "$DRY" ;;
-    remove|rm|uninstall|unforge) remove_forge "${ARGS[1]:?target required}" ;;
-    update|upgrade) update_forge "$DRY" ;;
-    rebuild) [[ -f "$FORGE_JSON" ]] && for t in $(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])).get("targets",{}); print(" ".join(k for k,v in d.items() if v.get("type")!="webapp"))' "$FORGE_JSON"); do forge_target "$t" 1 "$DRY"; done ;;
-    *) if [[ ${#ARGS[@]} -ge 2 && ( "${ARGS[0]}" =~ ^https?:// || ( "${ARGS[0]}" == *.* && "${ARGS[0]}" != */* ) ) ]]; then forge_webapp "${ARGS[0]}" "${ARGS[1]}" "$PROF_MODE" "$DRY"; else for t in "${ARGS[@]}"; do forge_target "$t" "$FORCE" "$DRY" "" "$PROF_MODE"; done; fi ;;
+    status|list|presets|env|flags) print_status ;; check-updates|check-update|outdated) check_updates_forge ;; mock|demo) enqueue_and_drain "1" "${ARGS[@]:1}" ;; fetch-bin|fetch|quick) export SF_BUILD_MODE="quick"; enqueue_and_drain "" "${ARGS[@]:1}" ;;
+    background-reforge|reforge|bg-reforge) BG_TGTS=(superfedora superforge supertheme superbar supershell supernotify idlescreen wlctl bluetui wiremix fuzzel btop); if [[ "$ASYNC" -eq 1 && "$DRY" -eq 0 ]]; then nohup nice -n 19 ionice -c 3 env SF_BUILD_MODE=source "${BASH_SOURCE[0]}" "${BG_TGTS[@]}" $([[ "$FORCE" -eq 1 ]] && echo --force) >/dev/null 2>&1 & echo "[OK] Enqueued ${#BG_TGTS[@]} special -march=native builds in background"; else SF_BUILD_MODE=source enqueue_and_drain "" "${BG_TGTS[@]}"; fi ;;
+    deps) detect_hw; t="${ARGS[1]:-hyprland}"; echo "Dependencies for $t: $(preset_deps "$t")"; [[ $INSTALL_DEPS -eq 1 ]] && ensure_pkgs $(preset_deps "$t") || true ;; dnf|rpm) enqueue_and_drain "" "dnf:${ARGS[1]:?package required}" ;; flatpak|flathub) enqueue_and_drain "" "flatpak:${ARGS[1]:?app_id required}" ;;
+    webapp|web|pwa) forge_webapp "${ARGS[1]:?url required}" "${ARGS[2]:-}" "$PROF_MODE" "$DRY" ;; remove|rm|uninstall|unforge) remove_forge "${ARGS[1]:?target required}" ;; update|upgrade) update_forge "$DRY" ;; rebuild) [[ -f "$FORGE_JSON" ]] && enqueue_and_drain "" $(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])).get("targets",{}); print(" ".join(k for k,v in d.items() if v.get("type") not in ("webapp","dnf","flatpak")))' "$FORGE_JSON") ;;
+    *) if [[ ${#ARGS[@]} -ge 2 && ( "${ARGS[0]}" =~ ^https?:// || ( "${ARGS[0]}" == *.* && "${ARGS[0]}" != */* && ! "${ARGS[0]}" =~ ^(org|com|io|net|app|dev|de|me|im)\.[a-zA-Z0-9_-]+\. ) ) ]]; then forge_webapp "${ARGS[0]}" "${ARGS[1]}" "$PROF_MODE" "$DRY"; else enqueue_and_drain "" "${ARGS[@]}"; fi ;;
 esac

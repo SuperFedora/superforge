@@ -2,8 +2,9 @@
 superfedora|superfedora|cargo|https://github.com/SuperFedora/superfedora.git
 supertheme|supertheme|cargo|https://github.com/SuperFedora/supertheme.git
 superforge|superforge|cargo|https://github.com/SuperFedora/superforge.git
-supershell|superdock|cargo|https://github.com/SuperFedora/supershell.git
-superagent|superagent|cargo|https://github.com/SuperFedora/superagent.git
+superbar|superbar|cargo|https://github.com/SuperFedora/superbar.git
+supershell|supersettings|cargo|https://github.com/SuperFedora/supershell.git
+supernotify|supernotify|cargo|https://github.com/SuperFedora/supernotify.git
 ripgrep|rg|cargo|https://github.com/BurntSushi/ripgrep.git
 fastfetch|fastfetch|cmake|https://github.com/fastfetch-cli/fastfetch.git
 idlescreen|idlescreen|cargo|https://github.com/idlescreen/idlescreen.git
