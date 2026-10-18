@@ -62,7 +62,7 @@ ensure_pkgs() {
 }
 preset_deps() {
     case "$1" in
-        superfedora|superbar|supersettings|supertheme|superforge|supershell|supernotify|tuigreet|ripgrep|rg|fd|zoxide|yazi|dua-cli|csvlens|fend) echo "gcc make" ;; ouch) echo "gcc make pkgconf-pkg-config bzip2-devel xz-devel libzstd-devel" ;;
+        superfedora|superbar|supersettings|supertheme|superforge|supershell|supernotify|tuigreet|ripgrep|rg|fd|zoxide|yazi|dua-cli|csvlens|fend) echo "gcc make" ;; ouch) echo "gcc clang clang-devel make pkgconf-pkg-config bzip2-devel xz-devel libzstd-devel" ;;
         typst) echo "gcc make pkgconf-pkg-config openssl-devel" ;; helix|btop) echo "gcc gcc-c++ make" ;; cliphist) echo "golang cliphist" ;; bazarr) echo "python3 python3-pip gcc libxml2-devel libxslt-devel" ;;
         oculante) echo "gcc gcc-c++ cmake make nasm pkgconf-pkg-config gtk3-devel libX11-devel libxcb-devel fontconfig-devel freetype-devel" ;; satty) echo "gcc make pkgconf-pkg-config gtk4-devel libadwaita-devel libepoxy-devel fontconfig-devel" ;;
         wl-screenrec) echo "gcc clang clang-devel make pkgconf-pkg-config ffmpeg-free-devel libdrm-devel libva-devel vulkan-headers wayland-devel" ;; termusic) echo "gcc clang clang-devel make pkgconf-pkg-config alsa-lib-devel dbus-devel protobuf-compiler gstreamer1-devel gstreamer1-plugins-base-devel" ;;
@@ -180,7 +180,7 @@ forge_target() {
         [[ "$name" == "oculante" && ! -x "$BIN_DIR/oculante" ]] && curl -fsSL --max-time 8 https://github.com/woelper/oculante/releases/latest/download/oculante_linux -o "$BIN_DIR/oculante" 2>/dev/null && chmod 755 "$BIN_DIR/oculante" || true
         [[ -x "$BIN_DIR/$bin" ]] && { record_forge "$name" "$repo" "$bin" "release" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 fast binary ready: $name ($BIN_DIR/$bin)"; return 0; }
         [[ -x "/usr/bin/$bin" ]] && { install_bin "/usr/bin/$bin" "$bin"; record_forge "$name" "$repo" "$bin" "system" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 system binary ready: $name ($BIN_DIR/$bin)"; return 0; }
-        local bpkg="$name"; [[ "$cargo_args" == -p\ * ]] && bpkg="${cargo_args#-p }"; command -v cargo-binstall >/dev/null 2>&1 && cargo-binstall -y --force --install-path "$BIN_DIR" "$bpkg" >/dev/null 2>&1 && [[ -x "$BIN_DIR/$bin" ]] && { record_forge "$name" "$repo" "$bin" "binstall" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 prebuilt crate ready: $name ($BIN_DIR/$bin)"; return 0; } || true
+        local bpkg="$name"; [[ "$cargo_args" == -p\ * ]] && bpkg="${cargo_args#-p }"; [[ -f "$SYSROOT/bin/cargo-binstall" || -x "$BIN_DIR/cargo-binstall" ]] || command -v cargo-binstall >/dev/null 2>&1 || curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | BINSTALL_INSTALL_PATH="$BIN_DIR" bash >/dev/null 2>&1 || true; command -v cargo-binstall >/dev/null 2>&1 && cargo-binstall -y --force --install-path "$BIN_DIR" "$bpkg" >/dev/null 2>&1 && [[ -x "$BIN_DIR/$bin" ]] && { record_forge "$name" "$repo" "$bin" "binstall" "quick"; set_live 0 ok "$name" 100 "[OK] Tier-1 prebuilt crate ready: $name ($BIN_DIR/$bin)"; return 0; } || true
     fi
     [[ "${IN_UPDATE:-0}" -eq 0 ]] && : > "$FORGE_LOG"; set_live 1 running "$name" 15 "[1/4] Checking & staging build headers for $name..."
     # shellcheck disable=SC2046

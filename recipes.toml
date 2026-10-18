@@ -151,7 +151,7 @@ name = "ouch"
 binary = "ouch"
 build_system = "cargo"
 repo = "https://github.com/ouch-org/ouch.git"
-deps = ["gcc", "make", "pkgconf-pkg-config", "bzip2-devel", "xz-devel", "libzstd-devel"]
+deps = ["gcc", "clang", "clang-devel", "make", "pkgconf-pkg-config", "bzip2-devel", "xz-devel", "libzstd-devel"]
 description = "Painless archive compression & extraction tool"
 [[recipe]]
 name = "oculante"
