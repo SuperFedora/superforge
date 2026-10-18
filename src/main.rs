@@ -5,11 +5,13 @@ mod builder;
 mod cache_tier;
 mod catalog;
 mod tui;
+mod webapp;
 
 use crate::builder::{exec_runner, print_status_and_charts, run_update_graphical, write_hw_profile};
 use crate::cache_tier::{run_background_reforge, run_fetch_bin};
 use crate::catalog::ForgeState;
 use crate::tui::run_tui;
+use crate::webapp::{run_webapp_exec, run_webapp_forge};
 use std::env;
 use std::io::{self, IsTerminal};
 use std::process;
@@ -69,6 +71,12 @@ fn main() {
             }
             "tui" => {
                 process::exit(run_tui());
+            }
+            "webapp-forge" => {
+                process::exit(run_webapp_forge(&args[1..]));
+            }
+            "webapp-exec" | "webapp-launch" => {
+                process::exit(run_webapp_exec(&args[1..]));
             }
             _ => {}
         }

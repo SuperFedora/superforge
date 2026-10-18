@@ -23,7 +23,7 @@ A **page** is one committed shell script, QML component, or configuration file. 
   Name the specific capability (`check.sh`, `install-dotfiles.sh`, `setup-btrfs-snapper.sh`, `core.sh`).
 - `[POLICY]` **Module Ordering & Naming**:
   Installer modules lead with a two-digit execution order: `00-preflight.sh`, `10-repos.sh`, `20-base.sh`, `30-session.sh`, `40-desktop.sh`, `50-apps.sh`, `60-idlescreen.sh`, `70-dev.sh`, `80-ai.sh`, `90-dotfiles.sh`.
-  Action pages lead with an active verb (`setup-btrfs-snapper.sh`, `gen-keybindings-doc.py`).
+  Action pages lead with an active verb (`setup-btrfs-snapper.sh`, `superfedora keybindings-doc`).
 - `[POLICY]` **Never Pad**: Do not add dummy comments or blank lines to clear 16 lines. Fold small helpers into their single caller or nearest sibling.
 
 ---
@@ -64,7 +64,7 @@ Order matters. Each step must pass completely before releasing or publishing:
 
 1. `bash -n bin/superfedora lib/*.sh modules/*.sh install.sh` — Zero bash syntax errors.
 2. `shellcheck -x -e SC1091 bin/superfedora lib/*.sh modules/*.sh install.sh` — Zero ShellCheck warnings.
-3. `python3 scripts/gen-keybindings-doc.py --check` — Keybindings docs synchronized with `bindings.conf`.
+3. `superfedora keybindings-doc --check` — Keybindings docs synchronized with `bindings.conf`.
 4. `bash tests/test_installer.sh` — Web installer unit tests pass.
 5. Container CI — Headless installation on clean Fedora container passes and achieves 100% idempotency.
 

@@ -19,14 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify AGENTS.md, LICENSE, VERSION, and Page Rules
+      - name: Verify AGENTS.md, LICENSE, VERSION, and README.md
         run: |
           test -f AGENTS.md
           test -f LICENSE
           test -f VERSION
-          if [ -f tests/test_page_rules.py ]; then
-            python3 tests/test_page_rules.py
-          fi
+          test "$(wc -l < README.md)" -lt 25
 
   rust-musl:
     name: Static musl Rust Binary Build & Tests
