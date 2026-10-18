@@ -138,7 +138,7 @@ pub fn run_webapp_forge(args: &[String]) -> i32 {
     let aid = format!("sf-webapp-{slug}");
 
     let mut html = String::new();
-    if let Some(o) = Command::new("curl").args(["-kfsSL", "-m", "6", "-A", UA, "-w", "\n__FINAL_URL__:%{url_effective}", &url]).output().ok() {
+    if let Ok(o) = Command::new("curl").args(["-kfsSL", "-m", "6", "-A", UA, "-w", "\n__FINAL_URL__:%{url_effective}", &url]).output() {
         let txt = String::from_utf8_lossy(&o.stdout);
         if let Some((body, eff)) = txt.rsplit_once("\n__FINAL_URL__:") {
             if !eff.trim().is_empty() { url = eff.trim().to_string(); }
@@ -146,7 +146,7 @@ pub fn run_webapp_forge(args: &[String]) -> i32 {
         } else { html = txt.to_string(); }
     }
     let (mut meta_t, mf_url, mut icons) = parse_html_meta(&url, &html);
-    if !mf_url.is_empty() && let Some(o) = Command::new("curl").args(["-kfsSL", "-m", "4", "-A", UA, &mf_url]).output().ok() && let Ok(mf) = serde_json::from_slice::<Value>(&o.stdout) {
+    if !mf_url.is_empty() && let Ok(o) = Command::new("curl").args(["-kfsSL", "-m", "4", "-A", UA, &mf_url]).output() && let Ok(mf) = serde_json::from_slice::<Value>(&o.stdout) {
         if cname.is_empty() && let Some(n) = mf.get("short_name").or_else(|| mf.get("name")).and_then(|v| v.as_str()) && !n.trim().is_empty() { meta_t = n.trim().to_string(); }
         if let Some(arr) = mf.get("icons").and_then(|v| v.as_array()) {
             for ic in arr {
@@ -159,7 +159,7 @@ pub fn run_webapp_forge(args: &[String]) -> i32 {
     }
     let title = clean_title(if !cname.trim().is_empty() { cname.trim() } else { &meta_t }, &host_label);
     set_live(ljson, true, "running", &title, 45, &format!("[2/4] Installing hicolor app icons (16px..512px) for {title}..."));
-    icons.sort_by(|a, b| b.0.cmp(&a.0));
+    icons.sort_by_key(|a| std::cmp::Reverse(a.0));
     let mut cands: Vec<String> = icons.into_iter().map(|(_, u)| u).collect();
     cands.extend([resolve_url(&url, "images/icon-512x512.png"), resolve_url(&url, "images/icon-192x192.png"), format!("{scheme}://{netloc}/apple-touch-icon.png"), format!("https://www.google.com/s2/favicons?sz=256&domain={host}"), format!("https://icons.duckduckgo.com/ip3/{host}.ico"), format!("{scheme}://{netloc}/favicon.ico")]);
     let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
@@ -213,23 +213,23 @@ pub fn run_webapp_exec(args: &[String]) -> i32 {
         let home = env::var("HOME").unwrap_or_else(|_| "/home/jeryd".into());
         for base in [PathBuf::from(&home).join(".config/mozilla/firefox"), PathBuf::from(&home).join(".mozilla/firefox")] {
             let Ok(txt) = fs::read_to_string(base.join("profiles.ini")) else { continue };
-            let (mut rel_inst, mut rel_def, mut cur_sec, mut sec_p, mut sec_d) = (None, None, String::new(), String::new(), false);
+            let (mut cands, mut def_p, mut cur_sec, mut sec_p, mut sec_d) = (Vec::new(), Vec::new(), String::new(), String::new(), false);
             for line in txt.lines().chain(["[END]"]) {
                 let l = line.trim();
                 if l.starts_with('[') && l.ends_with(']') {
-                    if !cur_sec.starts_with("Install") && sec_d && !sec_p.is_empty() && rel_def.is_none() { rel_def = Some(sec_p.clone()); }
+                    if !cur_sec.starts_with("Install") && sec_d && !sec_p.is_empty() { def_p.push(sec_p.clone()); }
                     cur_sec = l[1..l.len() - 1].to_string(); sec_p.clear(); sec_d = false;
                 } else if let Some((k, v)) = l.split_once('=') {
                     let (k, v) = (k.trim(), v.trim());
-                    if cur_sec.starts_with("Install") && k == "Default" && !v.is_empty() && rel_inst.is_none() { rel_inst = Some(v.to_string()); }
+                    if cur_sec.starts_with("Install") && k == "Default" && !v.is_empty() { cands.push(v.to_string()); }
                     else if k == "Path" { sec_p = v.to_string(); } else if k == "Default" && v == "1" { sec_d = true; }
                 }
             }
-            let Some(rel) = rel_inst.or(rel_def) else { continue };
-            let main = if Path::new(&rel).is_absolute() { PathBuf::from(rel) } else { base.join(rel) };
-            if !main.is_dir() { continue; }
+            cands.extend(def_p);
+            let Some(main) = cands.into_iter().map(|r| if Path::new(&r).is_absolute() { PathBuf::from(r) } else { base.join(r) }).find(|p| p.is_dir()) else { continue };
             for lnk in ["cert9.db", "cert_override.txt", "pkcs11.txt", "key4.db", "logins.json", "logins.db", "signedInUser.json"] {
                 let (s, d) = (main.join(lnk), pdir.join(lnk));
+                if d.symlink_metadata().is_ok() && !d.exists() { let _ = fs::remove_file(&d); }
                 if s.exists() && !d.exists() && std::os::unix::fs::symlink(&s, &d).is_err() { let _ = fs::copy(&s, &d); }
             }
             for db in ["permissions.sqlite", "content-prefs.sqlite", "webappsstore.sqlite", "webappsstore.sqlite-wal", "webappsstore.sqlite-shm", "cookies.sqlite", "cookies.sqlite-wal", "cookies.sqlite-shm"] {
@@ -240,6 +240,7 @@ pub fn run_webapp_exec(args: &[String]) -> i32 {
             if s_def.is_dir() && fs::create_dir_all(&d_def).is_ok() && let Ok(entries) = fs::read_dir(&s_def) {
                 for e in entries.flatten() {
                     let (se, de) = (e.path(), d_def.join(e.file_name()));
+                    if de.symlink_metadata().is_ok() && !de.exists() { let _ = fs::remove_file(&de); }
                     if se.is_dir() && !de.exists() { let _ = std::os::unix::fs::symlink(&se, &de); }
                 }
             }
